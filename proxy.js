@@ -781,6 +781,7 @@ function readBody(req) {
 }
 
 const server = http.createServer(handleRequest);
-server.listen(PORT, () => {
+// Always bind to localhost only — never expose to raw IP / all interfaces
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`Command Code Proxy on http://localhost:${PORT}`);
 });
