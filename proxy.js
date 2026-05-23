@@ -2,13 +2,23 @@ const BASE = process.env.COMMAND_CODE_API_URL || 'https://api.commandcode.ai';
 const CLI_VER = process.env.COMMAND_CODE_CLI_VERSION || '0.26.24';
 const PORT = parseInt(process.env.PROXY_PORT || '3000');
 
+let keyPool = [];
+
 function getActiveApiKey() {
-  if (proxyConfig.apiKeys && proxyConfig.apiKeys.length > 0) {
-    const activeKey = proxyConfig.apiKeys.find(k => k.status === 'active');
-    if (activeKey) return activeKey.value;
-    return proxyConfig.apiKeys[0].value;
+  const activeKeys = (proxyConfig.apiKeys || []).filter(k => k.status === 'active');
+  if (activeKeys.length === 0) return process.env.COMMAND_CODE_API_KEY;
+
+  if (keyPool.length === 0) {
+    keyPool = [...activeKeys];
+    // Fisher-Yates shuffle for even, unpredictable rotation
+    for (let i = keyPool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [keyPool[i], keyPool[j]] = [keyPool[j], keyPool[i]];
+    }
   }
-  return process.env.COMMAND_CODE_API_KEY;
+
+  const key = keyPool.pop();
+  return key.value;
 }
 
 function setupOpencodeConfig() {

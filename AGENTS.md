@@ -15,6 +15,7 @@ This is a Bun-based proxy server that creates OpenAI-compatible endpoints for th
 - Key quota/balance (monthlyCredits) display per key ✅
 - Real user name (userName) display per key ✅
 - Auto-validate all keys on dashboard load ✅
+- **Even key rotation (round-robin shuffle)** ✅
 
 ## Architecture
 
