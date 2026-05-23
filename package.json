@@ -1,0 +1,17 @@
+{
+  "name": "commandcode-proxy",
+  "version": "1.0.0",
+  "description": "Bun-based proxy for Command Code API with OpenAI-compatible endpoints",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "bun run proxy.js",
+    "dev": "bun run --watch proxy.js"
+  },
+  "keywords": ["command-code", "proxy", "openai", "api"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "node-fetch": "^3.3.2"
+  }
+}
