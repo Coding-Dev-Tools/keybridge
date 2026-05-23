@@ -236,15 +236,24 @@ async function checkKeyUsage(apiKey) {
     
     const data = await response.json();
     const credits = Number(data.credits ?? data.balance ?? data.total_credits ?? data.remaining ?? 0);
-    const usageData = data.usage || {};
+    const usageData = data.usage || data.summary || data.total_usage || {};
+    const totalTokens = Number(
+      data.totalTokens ??
+      data.total_tokens ??
+      (data.completionTokens && data.promptTokens ? data.completionTokens + data.promptTokens : undefined) ??
+      usageData.totalTokens ??
+      usageData.total_tokens ??
+      (usageData.completionTokens && usageData.promptTokens ? usageData.completionTokens + usageData.promptTokens : undefined) ??
+      0
+    );
     return {
       valid: true,
       credits: isNaN(credits) ? 0 : credits,
       currency: data.currency || 'USD',
       subscription: data.subscription || null,
-      totalTokens: usageData.totalTokens || 0,
-      inputTokens: usageData.inputTokens || 0,
-      outputTokens: usageData.outputTokens || 0,
+      totalTokens: isNaN(totalTokens) ? 0 : totalTokens,
+      inputTokens: Number(data.inputTokens ?? data.promptTokens ?? data.totalTokensIn ?? usageData.inputTokens ?? usageData.promptTokens ?? usageData.totalTokensIn ?? 0),
+      outputTokens: Number(data.outputTokens ?? data.completionTokens ?? data.totalTokensOut ?? usageData.outputTokens ?? usageData.completionTokens ?? usageData.totalTokensOut ?? 0),
       raw: data
     };
   } catch (e) {

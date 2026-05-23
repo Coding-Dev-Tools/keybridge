@@ -10,7 +10,9 @@
     :root {
       --primary-color: #0d6efd;
       --secondary-color: #6c757d;
-      --success-color: #198754;
+      --success-color: #32CD32;
+      --bs-success: #32CD32;
+      --bs-success-rgb: 50, 205, 50;
       --danger-color: #dc3545;
       --lg-text: #ffffff;
       --lg-red: #fb4268;
@@ -20,7 +22,7 @@
       margin: 0;
       min-height: 100vh;
       padding: 20px 0;
-      overflow-x: auto;
+      overflow-x: visible;
       background: #0d1117;
     }
     .dashboard-container {
@@ -52,7 +54,7 @@
       inset: 0;
       z-index: 1;
       border-radius: inherit;
-      background-color: rgba(255, 255, 255, 0.04);
+      background-color: rgba(255, 255, 255, 0.08);
       pointer-events: none;
     }
 
@@ -70,10 +72,11 @@
       z-index: 3;
       border-radius: inherit;
       overflow: hidden;
+      background: rgba(0, 0, 0, 0.4);
     }
 
     .card-header {
-      background: rgba(255, 255, 255, 0.04) !important;
+      background: rgba(0, 0, 0, 0.4) !important;
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
       font-weight: 600;
       text-transform: uppercase;
@@ -87,7 +90,6 @@
 
     .card-body {
       padding: 1.25rem;
-      background: rgba(255, 255, 255, 0.08);
       position: relative;
       z-index: 4;
       backdrop-filter: blur(13px) !important;
@@ -105,13 +107,25 @@
     .status-offline { background-color: var(--danger-color); box-shadow: 0 0 10px var(--danger-color); }
     .status-unknown { background-color: var(--secondary-color); }
 
-    .btn-gradient {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border: none;
-      color: white;
+    .btn-white-bg {
+      background: white;
+      border: 1px solid white;
+      color: #0d1117;
     }
-    .btn-gradient:hover {
-      background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    .btn-white-bg:hover {
+      background: rgba(255, 255, 255, 0.85);
+      border-color: white;
+      color: #0d1117;
+    }
+
+    .btn-outline-action {
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      color: white;
+      background: transparent;
+    }
+    .btn-outline-action:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: white;
       color: white;
     }
 
@@ -203,7 +217,7 @@
     }
 
     .modal-content {
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(0, 0, 0, 0.6);
       border: 1px solid rgba(255, 255, 255, 0.3);
       box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
       position: relative;
@@ -234,10 +248,10 @@
 
   <div class="dashboard-container">
     <!-- Header -->
-    <div class="card" data-glass>
+    <div class="card sticky-top" style="top:10px;z-index:100" data-glass>
       <div class="glass-panel"></div>
       <div class="card-content">
-        <div class="card-body py-3">
+        <div class="py-3">
           <div class="d-flex justify-content-between align-items-center">
             <div>
               <h4 class="mb-0"><i class="bi bi-hexagon-fill me-2"></i>Command Code Proxy Dashboard</h4>
@@ -304,7 +318,7 @@
           <div class="card-content">
             <div class="card-header d-flex justify-content-between align-items-center">
               <span><i class="bi bi-key-fill me-2"></i>API Keys Management</span>
-              <button class="btn btn-sm btn-gradient" onclick="addApiKey()">
+              <button class="btn btn-sm btn-white-bg" onclick="addApiKey()">
                 <i class="bi bi-plus-lg me-1"></i>Add Key
               </button>
             </div>
@@ -374,22 +388,22 @@
             </div>
             <div class="card-body">
               <div class="d-grid gap-2">
-                <button class="btn btn-outline-primary" onclick="checkHealth()">
+                <button class="btn btn-outline-action" onclick="checkHealth()">
                   <i class="bi bi-activity me-2"></i>Check Health
                 </button>
-                <button class="btn btn-outline-success" onclick="testConnection()">
+                <button class="btn btn-outline-action" onclick="testConnection()">
                   <i class="bi bi-wifi me-2"></i>Test Connection
                 </button>
-                <button class="btn btn-outline-info" onclick="validateAllKeys()">
+                <button class="btn btn-outline-action" onclick="validateAllKeys()">
                   <i class="bi bi-check-circle me-2"></i>Validate All Keys
                 </button>
-                <button class="btn btn-outline-info" onclick="refreshModels()">
+                <button class="btn btn-outline-action" onclick="refreshModels()">
                   <i class="bi bi-arrow-clockwise me-2"></i>Refresh Models
                 </button>
-                <button class="btn btn-gradient" onclick="saveConfiguration()">
+                <button class="btn btn-white-bg" onclick="saveConfiguration()">
                   <i class="bi bi-save me-2"></i>Save Configuration
                 </button>
-                <button class="btn btn-outline-danger" onclick="restartProxy()">
+                <button class="btn btn-outline-action" onclick="restartProxy()">
                   <i class="bi bi-arrow-counterclockwise me-2"></i>Restart Proxy
                 </button>
               </div>
@@ -457,8 +471,8 @@
           </form>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-gradient" onclick="saveApiKey()">Save Key</button>
+          <button type="button" class="btn btn-outline-action" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-white-bg" onclick="saveApiKey()">Save Key</button>
         </div>
       </div>
     </div>
@@ -729,7 +743,7 @@
           <div class="text-center text-muted py-4">
             <i class="bi bi-key" style="font-size: 2rem;"></i>
             <p class="mt-2">No API keys configured</p>
-            <button class="btn btn-sm btn-gradient" onclick="addApiKey()">Add Your First Key</button>
+            <button class="btn btn-sm btn-white-bg" onclick="addApiKey()">Add Your First Key</button>
           </div>
         `;
         return;
@@ -786,13 +800,13 @@
               ${quota}
             </div>
             <div>
-              <button class="btn btn-sm btn-outline-info me-1 mb-1" onclick="checkKeyQuota(${index})" title="Check Quota">
+              <button class="btn btn-sm btn-outline-action me-1 mb-1" onclick="checkKeyQuota(${index})" title="Check Quota">
                 <i class="bi bi-arrow-clockwise"></i>
               </button>
-              <button class="btn btn-sm btn-outline-primary me-1 mb-1" onclick="editApiKey(${index})">
+              <button class="btn btn-sm btn-outline-action me-1 mb-1" onclick="editApiKey(${index})">
                 <i class="bi bi-pencil"></i>
               </button>
-              <button class="btn btn-sm btn-outline-danger mb-1" onclick="deleteApiKey(${index})">
+              <button class="btn btn-sm btn-outline-action mb-1" onclick="deleteApiKey(${index})">
                 <i class="bi bi-trash"></i>
               </button>
             </div>
