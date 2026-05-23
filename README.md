@@ -1,5 +1,8 @@
 # Command Code Proxy
 
+<img width="1223" height="834" alt="image" src="https://github.com/user-attachments/assets/bd00818c-0e63-4b5e-8d43-ba4fe9eb5aa8" />
+
+
 **Inspired by [commandcode-bridge](https://github.com/yelixir-dev/commandcode-bridge)**
 
 A Bun-based proxy that creates OpenAI-compatible endpoints for the Command Code API (`api.commandcode.ai`). This proxy lets any OpenAI-compatible client use Command Code's models directly.
