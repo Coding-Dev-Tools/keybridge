@@ -1,9 +1,15 @@
-const API_KEY = process.env.COMMAND_CODE_API_KEY;
-if (!API_KEY) { console.error('COMMAND_CODE_API_KEY env var required'); process.exit(1); }
-
 const BASE = process.env.COMMAND_CODE_API_URL || 'https://api.commandcode.ai';
 const CLI_VER = process.env.COMMAND_CODE_CLI_VERSION || '0.26.24';
 const PORT = parseInt(process.env.PROXY_PORT || '3000');
+
+function getActiveApiKey() {
+  if (proxyConfig.apiKeys && proxyConfig.apiKeys.length > 0) {
+    const activeKey = proxyConfig.apiKeys.find(k => k.status === 'active');
+    if (activeKey) return activeKey.value;
+    return proxyConfig.apiKeys[0].value;
+  }
+  return process.env.COMMAND_CODE_API_KEY;
+}
 
 function setupOpencodeConfig() {
   const os = require('os');
@@ -118,10 +124,410 @@ function buildOpenAIChunk(id, model, index, delta, finishReason) {
   return { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index, delta, finish_reason: finishReason }] };
 }
 
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+let CONFIG_DIR = path.join(__dirname || '.', '.config');
+let CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+
+function ensureConfigDir() {
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      console.log(`Created config directory at ${CONFIG_DIR}`);
+    }
+  } catch (e) {
+    console.error('Failed to create config directory:', e.message);
+  }
+}
+
+function loadConfig() {
+  ensureConfigDir();
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      console.log(`Loaded config from ${CONFIG_FILE}`);
+      return config;
+    }
+  } catch (e) {
+    console.error('Failed to load config:', e.message);
+  }
+  
+  const defaultConfig = {
+    bindHost: 'localhost',
+    port: PORT,
+    apiUrl: BASE,
+    cliVersion: CLI_VER,
+    apiKeys: [],
+    models: [
+      { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', enabled: true },
+      { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', enabled: true },
+      { id: 'MiniMaxAI/MiniMax-M2.7', name: 'MiniMax M2.7', enabled: true },
+      { id: 'Qwen/Qwen3.6-Plus', name: 'Qwen 3.6 Plus', enabled: true },
+      { id: 'zai-org/GLM-5.1', name: 'GLM 5.1', enabled: true },
+      { id: 'moonshotai/Kimi-K2.6', name: 'Kimi K2.6', enabled: true }
+    ]
+  };
+  
+  saveConfig(defaultConfig);
+  return defaultConfig;
+}
+
+function saveConfig(config) {
+  try {
+    ensureConfigDir();
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    console.log(`Config saved to ${CONFIG_FILE}`);
+    return true;
+  } catch (e) {
+    console.error('Failed to save config:', e.message);
+    return false;
+  }
+}
+
+let proxyConfig = loadConfig();
+
+async function checkKeyQuota(apiKey) {
+  try {
+    const response = await fetch(`${BASE}/alpha/billing/credits`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'x-command-code-version': CLI_VER
+      }
+    });
+    
+    if (!response.ok) {
+      return { error: `HTTP ${response.status}`, valid: false };
+    }
+    
+    const data = await response.json();
+    const creditsObj = data.credits || {};
+    const credits = Number(creditsObj.monthlyCredits ?? creditsObj.purchasedCredits ?? data.balance ?? 0);
+    return {
+      valid: true,
+      credits,
+      currency: data.currency || 'USD',
+      subscription: data.subscription || null,
+      usage: creditsObj,
+      raw: data
+    };
+  } catch (e) {
+    return { error: e.message, valid: false };
+  }
+}
+
+async function checkKeyUsage(apiKey) {
+  try {
+    const response = await fetch(`${BASE}/alpha/usage/summary`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'x-command-code-version': CLI_VER
+      }
+    });
+    
+    if (!response.ok) {
+      return { error: `HTTP ${response.status}`, valid: false };
+    }
+    
+    const data = await response.json();
+    const credits = Number(data.credits ?? data.balance ?? data.total_credits ?? data.remaining ?? 0);
+    const usageData = data.usage || {};
+    return {
+      valid: true,
+      credits: isNaN(credits) ? 0 : credits,
+      currency: data.currency || 'USD',
+      subscription: data.subscription || null,
+      totalTokens: usageData.totalTokens || 0,
+      inputTokens: usageData.inputTokens || 0,
+      outputTokens: usageData.outputTokens || 0,
+      raw: data
+    };
+  } catch (e) {
+    return { error: e.message, valid: false };
+  }
+}
+
+async function getKeyInfo(apiKey) {
+  try {
+    const response = await fetch(`${BASE}/alpha/whoami`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'x-command-code-version': CLI_VER
+      }
+    });
+    
+    if (!response.ok) {
+      return { error: `HTTP ${response.status}`, valid: false };
+    }
+    
+    const data = await response.json();
+    let credits = 0;
+    if (data.credits && typeof data.credits === 'object') {
+      credits = Number(data.credits.monthlyCredits ?? data.credits.purchasedCredits ?? data.credits.freeCredits ?? 0);
+    } else {
+      credits = Number(data.credits ?? data.balance ?? 0);
+    }
+    return {
+      valid: true,
+      credits,
+      currency: data.currency || 'USD',
+      subscription: data.subscription || null,
+      usage: data.usage || null,
+      raw: data
+    };
+  } catch (e) {
+    return { error: e.message, valid: false };
+  }
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(request) {
     const url = new URL(request.url);
+
+    if (url.pathname === '/dashboard' || url.pathname === '/') {
+      const dashboardPath = path.join(process.cwd(), 'dashboard.html');
+      if (fs.existsSync(dashboardPath)) {
+        return new Response(fs.readFileSync(dashboardPath), {
+          headers: { 'Content-Type': 'text/html' }
+        });
+      }
+      return new Response('Dashboard not found', { status: 404 });
+    }
+
+    if (url.pathname === '/api/config') {
+      if (request.method === 'GET') {
+        return new Response(JSON.stringify(proxyConfig), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (request.method === 'POST') {
+        try {
+          const newConfig = await request.json();
+          proxyConfig = { ...proxyConfig, ...newConfig };
+          if (saveConfig(proxyConfig)) {
+            return new Response(JSON.stringify({ success: true, config: proxyConfig }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          return new Response(JSON.stringify({ error: 'Failed to save config' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+    }
+
+    if (url.pathname === '/api/keys') {
+      if (request.method === 'GET') {
+        return new Response(JSON.stringify({ keys: proxyConfig.apiKeys || [] }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (request.method === 'POST') {
+        try {
+          const { name, value, status } = await request.json();
+          if (!name || !value) {
+            return new Response(JSON.stringify({ error: 'Name and value required' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          if (!proxyConfig.apiKeys) proxyConfig.apiKeys = [];
+          proxyConfig.apiKeys.push({ name, value, status: status || 'active' });
+          saveConfig(proxyConfig);
+          return new Response(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      if (request.method === 'DELETE') {
+        try {
+          const { index } = await request.json();
+          if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
+            return new Response(JSON.stringify({ error: 'Invalid index' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          proxyConfig.apiKeys.splice(index, 1);
+          saveConfig(proxyConfig);
+          return new Response(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      if (request.method === 'PUT') {
+        try {
+          const { index, name, value, status } = await request.json();
+          if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
+            return new Response(JSON.stringify({ error: 'Invalid index' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          if (!name || !value) {
+            return new Response(JSON.stringify({ error: 'Name and value required' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          proxyConfig.apiKeys[index] = { name, value, status: status || 'active' };
+          saveConfig(proxyConfig);
+          return new Response(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+    }
+
+    if (url.pathname === '/api/models') {
+      if (request.method === 'GET') {
+        return new Response(JSON.stringify({ models: proxyConfig.models || [] }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (request.method === 'POST') {
+        try {
+          const { models } = await request.json();
+          proxyConfig.models = models;
+          saveConfig(proxyConfig);
+          return new Response(JSON.stringify({ success: true, models: proxyConfig.models }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+    }
+
+    if (url.pathname === '/api/restart') {
+      if (request.method === 'POST') {
+        console.log('Restart requested...');
+        return new Response(JSON.stringify({ success: true, message: 'Restart initiated' }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    if (url.pathname === '/api/keys/quota') {
+      if (request.method === 'POST') {
+        try {
+          const { index } = await request.json();
+          if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
+            return new Response(JSON.stringify({ error: 'Invalid index' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          
+          const apiKey = proxyConfig.apiKeys[index].value;
+          const [quota, usage, info] = await Promise.all([
+            checkKeyQuota(apiKey),
+            checkKeyUsage(apiKey),
+            getKeyInfo(apiKey)
+          ]);
+          
+          return new Response(JSON.stringify({
+            success: true,
+            quota,
+            usage,
+            info,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+    }
+
+    if (url.pathname === '/api/keys/validate-all') {
+      if (request.method === 'POST') {
+        try {
+          const results = [];
+          for (let i = 0; i < (proxyConfig.apiKeys?.length || 0); i++) {
+            const apiKey = proxyConfig.apiKeys[i].value;
+            const [quota, usage, info] = await Promise.all([
+              checkKeyQuota(apiKey),
+              checkKeyUsage(apiKey),
+              getKeyInfo(apiKey)
+            ]);
+            results.push({
+              index: i,
+              name: proxyConfig.apiKeys[i].name,
+              quota,
+              usage,
+              info
+            });
+          }
+          
+          return new Response(JSON.stringify({
+            success: true,
+            results,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+    }
+
+    if (url.pathname === '/api/bg') {
+      try {
+        const resp = await fetch('https://peapix.com/bing/feed');
+        const data = await resp.json();
+        const item = Array.isArray(data) ? data[0] : data;
+        const imgUrl = item.fullUrl || item.imageUrl || item.url || '';
+        if (imgUrl) {
+          return new Response(JSON.stringify({ url: imgUrl }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
 
     if (url.pathname === '/health') {
       return new Response(JSON.stringify({ status: 'ok', version: '1.0.0', cli_version: CLI_VER }), { 
@@ -174,10 +580,18 @@ const server = Bun.serve({
         threadId: crypto.randomUUID()
       };
 
+      const apiKey = getActiveApiKey();
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: { message: 'No API key configured', type: 'configuration_error' } }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       const r = await fetch(`${BASE}/alpha/generate`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'x-command-code-version': CLI_VER
         },

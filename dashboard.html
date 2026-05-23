@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command Code Proxy Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #0d6efd;
+      --secondary-color: #6c757d;
+      --success-color: #198754;
+      --danger-color: #dc3545;
+      --lg-text: #ffffff;
+      --lg-red: #fb4268;
+      --lg-grey: #5b5b5b;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 20px 0;
+      overflow-x: auto;
+      background: #0d1117;
+    }
+    .dashboard-container {
+      position: relative;
+      z-index: 10;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .card {
+      position: relative;
+      border: none;
+      border-radius: var(--glass-radius, 12px);
+      margin-bottom: 20px;
+      background: transparent !important;
+    }
+
+    .glass-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: inherit;
+      overflow: hidden;
+    }
+
+    .glass-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+      background-color: rgba(255, 255, 255, 0.04);
+      pointer-events: none;
+    }
+
+    .glass-panel::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: inherit;
+      pointer-events: none;
+    }
+
+    .card-content {
+      position: relative;
+      z-index: 3;
+      border-radius: inherit;
+      overflow: hidden;
+    }
+
+    .card-header {
+      background: rgba(255, 255, 255, 0.04) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 14px;
+      color: white;
+      padding: 1rem 1.25rem;
+      position: relative;
+      z-index: 4;
+    }
+
+    .card-body {
+      padding: 1.25rem;
+      background: rgba(255, 255, 255, 0.08);
+      position: relative;
+      z-index: 4;
+      backdrop-filter: blur(13px) !important;
+      -webkit-backdrop-filter: blur(13px) !important;
+    }
+
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+    .status-online { background-color: var(--success-color); box-shadow: 0 0 10px var(--success-color); }
+    .status-offline { background-color: var(--danger-color); box-shadow: 0 0 10px var(--danger-color); }
+    .status-unknown { background-color: var(--secondary-color); }
+
+    .btn-gradient {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      color: white;
+    }
+    .btn-gradient:hover {
+      background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+      color: white;
+    }
+
+    .stats-card {
+      background: transparent;
+      border-radius: 12px;
+      padding: 0;
+      text-align: center;
+      position: relative;
+      z-index: 10;
+      backdrop-filter: blur(13px);
+      -webkit-backdrop-filter: blur(13px);
+    }
+
+    .stats-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+    }
+    .stats-label {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .credential-row {
+      background: transparent;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .credential-row.expired {
+      opacity: 0.6;
+      background: rgba(220, 53, 69, 0.15);
+    }
+
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1050;
+    }
+
+    .form-label {
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: 6px;
+    }
+    .form-control, .form-select {
+      display: block;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: white;
+      padding: 0.375rem 0.75rem;
+      font-size: 1rem;
+      border-radius: 0.375rem;
+    }
+    .form-control:focus, .form-select:focus {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.4);
+      color: white;
+      outline: 0;
+      box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+    }
+    .form-control::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+    .form-text {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .text-muted {
+      color: rgba(255, 255, 255, 0.7) !important;
+    }
+    .bg-light {
+      background: rgba(255, 255, 255, 0.1) !important;
+    }
+    h4, h5, strong, .fw-medium {
+      color: white !important;
+    }
+    small {
+      color: rgba(255, 255, 255, 0.8) !important;
+    }
+
+    .modal-content {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+      position: relative;
+      z-index: 20;
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+    }
+    .modal-header, .modal-body, .modal-footer {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .modal-title {
+      color: white !important;
+    }
+    .modal .btn-close {
+      filter: invert(1) grayscale(1) brightness(2);
+    }
+
+    .api-key-input {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <svg style="position:absolute;overflow:hidden;width:0;height:0" color-interpolation-filters="sRGB">
+    <defs id="glass-defs"></defs>
+  </svg>
+
+  <div class="dashboard-container">
+    <!-- Header -->
+    <div class="card" data-glass>
+      <div class="glass-panel"></div>
+      <div class="card-content">
+        <div class="card-body py-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h4 class="mb-0"><i class="bi bi-hexagon-fill me-2"></i>Command Code Proxy Dashboard</h4>
+              <small class="text-muted">Manage API keys and monitor proxy status</small>
+            </div>
+            <div class="text-end">
+              <div>
+                <span id="statusIndicator" class="status-indicator status-unknown"></span>
+                <span id="statusText" class="fw-medium">Checking...</span>
+              </div>
+              <div class="proxy-version" id="versionText">v1.0.0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="row mb-4">
+      <div class="col-md-3 col-sm-6">
+        <div class="stats-card card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content" style="padding: 20px;">
+            <div class="stats-value" id="totalKeys">0</div>
+            <div class="stats-label">Total Keys</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="stats-card card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content" style="padding: 20px;">
+            <div class="stats-value" id="activeKeys">0</div>
+            <div class="stats-label">Active Keys</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="stats-card card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content" style="padding: 20px;">
+            <div class="stats-value" id="totalModels">6</div>
+            <div class="stats-label">Models</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="stats-card card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content" style="padding: 20px;">
+            <div class="stats-value" id="proxyPort">3000</div>
+            <div class="stats-label">Port</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Left Column -->
+      <div class="col-lg-7">
+        <!-- API Keys Management -->
+        <div class="card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-key-fill me-2"></i>API Keys Management</span>
+              <button class="btn btn-sm btn-gradient" onclick="addApiKey()">
+                <i class="bi bi-plus-lg me-1"></i>Add Key
+              </button>
+            </div>
+            <div class="card-body">
+              <div id="apiKeysContainer"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Proxy Configuration -->
+        <div class="card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content">
+            <div class="card-header">
+              <i class="bi bi-gear-fill me-2"></i>Proxy Configuration
+            </div>
+            <div class="card-body">
+              <form id="configForm">
+                <div class="row mb-3">
+                  <div class="col-md-6">
+                    <label class="form-label">Bind Host</label>
+                    <select class="form-select" id="bindHost">
+                      <option value="localhost">localhost (Local Only)</option>
+                      <option value="0.0.0.0">0.0.0.0 (All Interfaces)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Port</label>
+                    <input type="number" class="form-control" id="proxyPortInput" min="1024" max="65535" value="3000">
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Command Code API URL</label>
+                  <input type="url" class="form-control" id="apiUrl" value="https://api.commandcode.ai">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">CLI Version</label>
+                  <input type="text" class="form-control" id="cliVersion" value="0.26.24">
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="col-lg-5">
+        <!-- Models Status -->
+        <div class="card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content">
+            <div class="card-header">
+              <i class="bi bi-cpu-fill me-2"></i>Available Models
+            </div>
+            <div class="card-body">
+              <div id="modelsContainer"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content">
+            <div class="card-header">
+              <i class="bi bi-lightning-charge-fill me-2"></i>Quick Actions
+            </div>
+            <div class="card-body">
+              <div class="d-grid gap-2">
+                <button class="btn btn-outline-primary" onclick="checkHealth()">
+                  <i class="bi bi-activity me-2"></i>Check Health
+                </button>
+                <button class="btn btn-outline-success" onclick="testConnection()">
+                  <i class="bi bi-wifi me-2"></i>Test Connection
+                </button>
+                <button class="btn btn-outline-info" onclick="validateAllKeys()">
+                  <i class="bi bi-check-circle me-2"></i>Validate All Keys
+                </button>
+                <button class="btn btn-outline-info" onclick="refreshModels()">
+                  <i class="bi bi-arrow-clockwise me-2"></i>Refresh Models
+                </button>
+                <button class="btn btn-gradient" onclick="saveConfiguration()">
+                  <i class="bi bi-save me-2"></i>Save Configuration
+                </button>
+                <button class="btn btn-outline-danger" onclick="restartProxy()">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i>Restart Proxy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Environment Info -->
+        <div class="card" data-glass>
+          <div class="glass-panel"></div>
+          <div class="card-content">
+            <div class="card-header">
+              <i class="bi bi-info-circle-fill me-2"></i>Environment
+            </div>
+            <div class="card-body">
+              <div class="mb-2">
+                <small class="text-muted">Working Directory</small>
+                <div class="fw-medium text-truncate" id="workDir">-</div>
+              </div>
+              <div class="mb-2">
+                <small class="text-muted">Platform</small>
+                <div class="fw-medium" id="platform">-</div>
+              </div>
+              <div class="mb-2">
+                <small class="text-muted">Node Version</small>
+                <div class="fw-medium" id="nodeVersion">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Modal for API Key -->
+  <div class="modal fade" id="apiKeyModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add/Edit API Key</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="apiKeyForm">
+            <input type="hidden" id="editKeyIndex">
+            <div class="mb-3">
+              <label class="form-label">Key Name</label>
+              <input type="text" class="form-control" id="keyName" placeholder="e.g., Primary Key" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">API Key</label>
+              <input type="text" class="form-control api-key-input" id="keyValue" placeholder="user_..." required>
+              <div class="form-text">Your Command Code API key</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Status</label>
+              <select class="form-select" id="keyStatus">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-gradient" onclick="saveApiKey()">Save Key</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const SURFACE_FNS = {
+      convex_squircle: (x) => Math.pow(1 - Math.pow(1 - x, 4), 0.25),
+    };
+
+    function calculateRefractionProfile(glassThickness, bezelWidth, heightFn, ior, samples) {
+      samples = samples || 128;
+      const eta = 1 / ior;
+      function refract(nx, ny) {
+        const dot = ny;
+        const k = 1 - eta * eta * (1 - dot * dot);
+        if (k < 0) return null;
+        const sq = Math.sqrt(k);
+        return [-(eta * dot + sq) * nx, eta - (eta * dot + sq) * ny];
+      }
+      const profile = new Float64Array(samples);
+      for (let i = 0; i < samples; i++) {
+        const x = i / samples;
+        const y = heightFn(x);
+        const dx = x < 1 ? 0.0001 : -0.0001;
+        const y2 = heightFn(x + dx);
+        const deriv = (y2 - y) / dx;
+        const mag = Math.sqrt(deriv * deriv + 1);
+        const ref = refract(-deriv / mag, -1 / mag);
+        if (!ref) { profile[i] = 0; continue; }
+        profile[i] = ref[0] * ((y * bezelWidth + glassThickness) / ref[1]);
+      }
+      return profile;
+    }
+
+    function generateDisplacementMap(w, h, radius, bezelWidth, profile, maxDisp) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      const img = ctx.createImageData(w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = 128; d[i+1] = 128; d[i+2] = 0; d[i+3] = 255;
+      }
+      const r = radius, rSq = r*r, r1Sq = (r+1)**2;
+      const rBSq = Math.max(r - bezelWidth, 0)**2;
+      const wB = w - r*2, hB = h - r*2, S = profile.length;
+      for (let y1 = 0; y1 < h; y1++) {
+        for (let x1 = 0; x1 < w; x1++) {
+          const x = x1 < r ? x1 - r : x1 >= w - r ? x1 - r - wB : 0;
+          const y = y1 < r ? y1 - r : y1 >= h - r ? y1 - r - hB : 0;
+          const dSq = x*x + y*y;
+          if (dSq > r1Sq || dSq < rBSq) continue;
+          const dist = Math.sqrt(dSq);
+          const fromSide = r - dist;
+          const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq));
+          if (op <= 0 || dist === 0) continue;
+          const cos = x / dist, sin = y / dist;
+          const bi = Math.min(((fromSide / bezelWidth) * S) | 0, S - 1);
+          const disp = profile[bi] || 0;
+          const dX = (-cos * disp) / maxDisp, dY = (-sin * disp) / maxDisp;
+          const idx = (y1 * w + x1) * 4;
+          d[idx] = (128 + dX * 127 * op + 0.5) | 0;
+          d[idx+1] = (128 + dY * 127 * op + 0.5) | 0;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      return c.toDataURL();
+    }
+
+    function generateSpecularMap(w, h, radius, bezelWidth, angle) {
+      angle = angle != null ? angle : Math.PI / 3;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      const img = ctx.createImageData(w, h);
+      const d = img.data; d.fill(0);
+      const r = radius, rSq = r*r, r1Sq = (r+1)**2;
+      const rBSq = Math.max(r - bezelWidth, 0)**2;
+      const wB = w - r*2, hB = h - r*2;
+      const sv = [Math.cos(angle), Math.sin(angle)];
+      for (let y1 = 0; y1 < h; y1++) {
+        for (let x1 = 0; x1 < w; x1++) {
+          const x = x1 < r ? x1 - r : x1 >= w - r ? x1 - r - wB : 0;
+          const y = y1 < r ? y1 - r : y1 >= h - r ? y1 - r - hB : 0;
+          const dSq = x*x + y*y;
+          if (dSq > r1Sq || dSq < rBSq) continue;
+          const dist = Math.sqrt(dSq);
+          const fromSide = r - dist;
+          const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq));
+          if (op <= 0 || dist === 0) continue;
+          const cos = x / dist, sin = -y / dist;
+          const dot = Math.abs(cos * sv[0] + sin * sv[1]);
+          const edge = Math.sqrt(Math.max(0, 1 - (1 - fromSide)**2));
+          const coeff = dot * edge;
+          const col = (255 * coeff) | 0;
+          const alpha = (col * coeff * op) | 0;
+          const idx = (y1 * w + x1) * 4;
+          d[idx] = col; d[idx+1] = col; d[idx+2] = col; d[idx+3] = alpha;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      return c.toDataURL();
+    }
+
+    function initLiquidGlass() {
+      const cards = document.querySelectorAll('[data-glass]');
+      const defs = document.getElementById('glass-defs');
+      let filterIndex = 0;
+
+      cards.forEach(card => {
+        requestAnimationFrame(() => {
+          const rect = card.getBoundingClientRect();
+          if (rect.width < 2 || rect.height < 2) return;
+          const w = Math.round(rect.width);
+          const h = Math.round(rect.height);
+          const radius = 12;
+          const bezelW = 30;
+          const glassThick = 60;
+          const ior = 2.5;
+          const blurAmt = 0.3;
+          const specOpacity = 0.5;
+          const specSat = 4;
+
+          const heightFn = SURFACE_FNS.convex_squircle;
+          const profile = calculateRefractionProfile(glassThick, bezelW, heightFn, ior, 128);
+          const maxDisp = Math.max(...Array.from(profile).map(Math.abs)) || 1;
+          const dispUrl = generateDisplacementMap(w, h, radius, bezelW, profile, maxDisp);
+          const specUrl = generateSpecularMap(w, h, radius, bezelW * 2.5);
+          const scale = maxDisp * 1.0;
+
+          const filterId = 'liquid-glass-' + filterIndex++;
+          const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+          filter.setAttribute('id', filterId);
+          filter.setAttribute('x', '0%');
+          filter.setAttribute('y', '0%');
+          filter.setAttribute('width', '100%');
+          filter.setAttribute('height', '100%');
+          filter.innerHTML = `
+            <feGaussianBlur in="SourceGraphic" stdDeviation="${blurAmt}" result="blurred_source" />
+            <feImage href="${dispUrl}" x="0" y="0" width="${w}" height="${h}" result="disp_map" />
+            <feDisplacementMap in="blurred_source" in2="disp_map" scale="${scale}" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+            <feColorMatrix in="displaced" type="saturate" values="${specSat}" result="displaced_sat" />
+            <feImage href="${specUrl}" x="0" y="0" width="${w}" height="${h}" result="spec_layer" />
+            <feComposite in="displaced_sat" in2="spec_layer" operator="in" result="spec_masked" />
+            <feComponentTransfer in="spec_layer" result="spec_faded">
+              <feFuncA type="linear" slope="${specOpacity}" />
+            </feComponentTransfer>
+            <feBlend in="spec_masked" in2="displaced" mode="normal" result="with_sat" />
+            <feBlend in="spec_faded" in2="with_sat" mode="normal" />
+          `;
+          defs.appendChild(filter);
+
+          const panel = card.querySelector('.glass-panel');
+          panel.style.backdropFilter = `url(#${filterId})`;
+          panel.style.webkitBackdropFilter = `url(#${filterId})`;
+        });
+      });
+    }
+
+    // State
+    let apiKeys = [];
+    let config = {};
+    let models = [
+      { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', enabled: true },
+      { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', enabled: true },
+      { id: 'MiniMaxAI/MiniMax-M2.7', name: 'MiniMax M2.7', enabled: true },
+      { id: 'Qwen/Qwen3.6-Plus', name: 'Qwen 3.6 Plus', enabled: true },
+      { id: 'zai-org/GLM-5.1', name: 'GLM 5.1', enabled: true },
+      { id: 'moonshotai/Kimi-K2.6', name: 'Kimi K2.6', enabled: true }
+    ];
+
+    async function fetchBingWallpaper() {
+      try {
+        const r = await fetch('/api/bg');
+        const data = await r.json();
+        if (data.url) {
+          document.body.style.background = `url("${data.url}") center/cover no-repeat fixed`;
+          document.body.style.backgroundSize = 'cover';
+        }
+      } catch (e) {
+        console.error('Failed to fetch bing wallpaper:', e);
+      }
+    }
+
+    async function fetchBingWallpaper() {
+      try {
+        const r = await fetch('/api/bg');
+        const data = await r.json();
+        if (data.url) {
+          document.body.style.background = `url("${data.url}") center/cover no-repeat fixed`;
+          document.body.style.backgroundSize = 'cover';
+        }
+      } catch (e) {
+        console.error('Failed to fetch bing wallpaper:', e);
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      initLiquidGlass();
+      loadConfiguration();
+      checkHealth();
+      updateEnvironmentInfo();
+      fetchBingWallpaper();
+    });
+
+    // Toast notifications
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-white bg-${type} border-0 show`;
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+      document.getElementById('toastContainer').appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Load configuration
+    async function loadConfiguration() {
+      try {
+        const healthResponse = await fetch('/health');
+        const healthData = await healthResponse.json();
+        config = {
+          status: healthData.status,
+          version: healthData.version,
+          cliVersion: healthData.cli_version
+        };
+        document.getElementById('versionText').textContent = `v${healthData.version}`;
+        document.getElementById('cliVersion').value = healthData.cli_version || '0.26.24';
+        
+        const configResponse = await fetch('/api/config');
+        const configData = await configResponse.json();
+        if (configData) {
+          config = { ...config, ...configData };
+          document.getElementById('bindHost').value = configData.bindHost || 'localhost';
+          document.getElementById('proxyPortInput').value = configData.port || 3000;
+          document.getElementById('apiUrl').value = configData.apiUrl || 'https://api.commandcode.ai';
+          document.getElementById('cliVersion').value = configData.cliVersion || '0.26.24';
+          
+          if (configData.apiKeys) {
+            apiKeys = configData.apiKeys;
+          }
+          if (configData.models) {
+            models = configData.models;
+          }
+        }
+        
+        renderApiKeys();
+        renderModels();
+        updateStats();
+        validateAllKeys();
+      } catch (error) {
+        console.error('Failed to load config:', error);
+        showToast('Failed to load configuration', 'danger');
+      }
+    }
+
+    // Render API keys
+    function renderApiKeys() {
+      const container = document.getElementById('apiKeysContainer');
+      if (apiKeys.length === 0) {
+        container.innerHTML = `
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-key" style="font-size: 2rem;"></i>
+            <p class="mt-2">No API keys configured</p>
+            <button class="btn btn-sm btn-gradient" onclick="addApiKey()">Add Your First Key</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = apiKeys.map((key, index) => {
+        const quota = key.quota ? `
+          <div class="mt-2 p-2 bg-light rounded">
+            <div class="d-flex justify-content-between align-items-center">
+              <small class="text-muted">
+                <i class="bi bi-wallet2 me-1"></i>
+                Balance: <strong class="text-success">$${Number(key.quota.credits?.monthlyCredits ?? key.quota.credits ?? 0).toFixed(2)}</strong>
+              </small>
+              ${key.usage?.valid ? `
+                <small class="text-muted">
+                  <i class="bi bi-graph-up me-1"></i>
+                  ${(key.usage.totalTokens || 0).toLocaleString()} tokens
+                </small>
+              ` : ''}
+              ${key.info ? `
+                <small class="text-muted" title="${escapeHtml(key.info.raw?.user?.email || key.info.email || '')}">
+                  <i class="bi bi-person-circle me-1"></i>
+                  User: ${escapeHtml(key.info.raw?.user?.name || key.info.raw?.user?.userName || key.info.email || 'Unknown')}
+                </small>
+              ` : ''}
+            </div>
+          </div>
+        ` : '';
+        
+        const loading = key.loading ? `
+          <div class="text-center py-2">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        ` : '';
+
+        return `
+        <div class="credential-row ${key.status === 'inactive' ? 'expired' : ''}">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center mb-2">
+                <span class="badge ${key.status === 'active' ? 'bg-success' : 'bg-secondary'} me-2">
+                  ${key.status.toUpperCase()}
+                </span>
+                <strong>${escapeHtml(key.name)}</strong>
+                ${key.quota?.valid ? '<i class="bi bi-patch-check-fill text-success ms-2"></i>' : ''}
+                ${key.quota?.error ? '<i class="bi bi-exclamation-triangle-fill text-warning ms-2" title="' + escapeHtml(key.quota.error) + '"></i>' : ''}
+              </div>
+              <div class="font-monospace text-muted small">
+                ${maskKey(key.value)}
+              </div>
+              ${loading}
+              ${quota}
+            </div>
+            <div>
+              <button class="btn btn-sm btn-outline-info me-1 mb-1" onclick="checkKeyQuota(${index})" title="Check Quota">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-primary me-1 mb-1" onclick="editApiKey(${index})">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger mb-1" onclick="deleteApiKey(${index})">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      }).join('');
+      
+      updateStats();
+    }
+
+    // Render models
+    function renderModels() {
+      const container = document.getElementById('modelsContainer');
+      container.innerHTML = models.map(model => `
+        <div class="d-flex justify-content-between align-items-center mb-2 p-2 rounded ${model.enabled ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}">
+          <div>
+            <span class="fw-medium">${escapeHtml(model.name)}</span>
+            <div class="small text-muted">${escapeHtml(model.id)}</div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" 
+                   ${model.enabled ? 'checked' : ''} 
+                   onchange="toggleModel('${escapeHtml(model.id)}')">
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Add API key
+    function addApiKey() {
+      document.getElementById('editKeyIndex').value = '-1';
+      document.getElementById('keyName').value = '';
+      document.getElementById('keyValue').value = '';
+      document.getElementById('keyStatus').value = 'active';
+      new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+    }
+
+    // Edit API key
+    function editApiKey(index) {
+      const key = apiKeys[index];
+      document.getElementById('editKeyIndex').value = index;
+      document.getElementById('keyName').value = key.name;
+      document.getElementById('keyValue').value = key.value;
+      document.getElementById('keyStatus').value = key.status;
+      new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+    }
+
+    // Save API key
+    async function saveApiKey() {
+      const index = parseInt(document.getElementById('editKeyIndex').value);
+      const name = document.getElementById('keyName').value.trim();
+      const value = document.getElementById('keyValue').value.trim();
+      const status = document.getElementById('keyStatus').value;
+
+      if (!name || !value) {
+        showToast('Please fill in all fields', 'warning');
+        return;
+      }
+
+      try {
+        if (index === -1) {
+          const response = await fetch('/api/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, value, status })
+          });
+          const data = await response.json();
+          if (data.success) {
+            apiKeys = data.keys;
+            showToast('API key added successfully', 'success');
+          }
+        } else {
+          const response = await fetch('/api/keys', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index, name, value, status })
+          });
+          const data = await response.json();
+          if (data.success) {
+            apiKeys = data.keys;
+            showToast('API key updated successfully', 'success');
+          }
+        }
+        bootstrap.Modal.getInstance(document.getElementById('apiKeyModal')).hide();
+        renderApiKeys();
+      } catch (error) {
+        showToast('Failed to save API key: ' + error.message, 'danger');
+      }
+    }
+
+    // Delete API key
+    async function deleteApiKey(index) {
+      if (confirm('Are you sure you want to delete this API key?')) {
+        try {
+          const response = await fetch('/api/keys', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index })
+          });
+          const data = await response.json();
+          if (data.success) {
+            apiKeys = data.keys;
+            showToast('API key deleted', 'info');
+            renderApiKeys();
+          }
+        } catch (error) {
+          showToast('Failed to delete key: ' + error.message, 'danger');
+        }
+      }
+    }
+
+    // Toggle model
+    async function toggleModel(modelId) {
+      const model = models.find(m => m.id === modelId);
+      if (model) {
+        model.enabled = !model.enabled;
+        try {
+          await fetch('/api/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ models })
+          });
+          showToast(`${model.name} ${model.enabled ? 'enabled' : 'disabled'}`, 'info');
+        } catch (error) {
+          model.enabled = !model.enabled;
+          showToast('Failed to update model', 'danger');
+        }
+      }
+    }
+
+    // Check key quota
+    async function checkKeyQuota(index) {
+      const key = apiKeys[index];
+      key.loading = true;
+      renderApiKeys();
+      
+      try {
+        const response = await fetch('/api/keys/quota', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ index })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          apiKeys[index].quota = data.quota;
+          apiKeys[index].usage = data.usage;
+          apiKeys[index].info = data.info;
+          showToast('Quota updated', 'success');
+        } else {
+          showToast('Failed to check quota: ' + data.error, 'warning');
+        }
+      } catch (error) {
+        showToast('Failed to check quota: ' + error.message, 'danger');
+      } finally {
+        apiKeys[index].loading = false;
+        renderApiKeys();
+      }
+    }
+
+    // Validate all keys
+    async function validateAllKeys() {
+      showToast('Checking all API keys...', 'info');
+      
+      try {
+        const response = await fetch('/api/keys/validate-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          data.results.forEach(result => {
+            const index = result.index;
+            if (apiKeys[index]) {
+              apiKeys[index].quota = result.quota;
+              apiKeys[index].usage = result.usage;
+              apiKeys[index].info = result.info;
+            }
+          });
+          renderApiKeys();
+          showToast(`Validated ${data.results.length} keys`, 'success');
+        }
+      } catch (error) {
+        showToast('Failed to validate keys: ' + error.message, 'danger');
+      }
+    }
+
+    // Check health
+    async function checkHealth() {
+      try {
+        const response = await fetch('/health');
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+          document.getElementById('statusIndicator').className = 'status-indicator status-online';
+          document.getElementById('statusText').textContent = 'Online';
+          showToast('Proxy is healthy', 'success');
+        } else {
+          throw new Error('Unhealthy status');
+        }
+      } catch (error) {
+        document.getElementById('statusIndicator').className = 'status-indicator status-offline';
+        document.getElementById('statusText').textContent = 'Offline';
+        showToast('Proxy health check failed', 'danger');
+      }
+    }
+
+    // Test connection
+    async function testConnection() {
+      try {
+        const response = await fetch('/v1/models');
+        if (response.ok) {
+          const data = await response.json();
+          showToast(`Connected! ${data.data?.length || 0} models available`, 'success');
+        } else {
+          throw new Error('Connection failed');
+        }
+      } catch (error) {
+        showToast('Connection test failed', 'danger');
+      }
+    }
+
+    // Refresh models
+    function refreshModels() {
+      renderModels();
+      showToast('Models refreshed', 'info');
+    }
+
+    // Save configuration
+    async function saveConfiguration() {
+      const newConfig = {
+        bindHost: document.getElementById('bindHost').value,
+        port: parseInt(document.getElementById('proxyPortInput').value),
+        apiUrl: document.getElementById('apiUrl').value,
+        cliVersion: document.getElementById('cliVersion').value,
+        apiKeys: apiKeys,
+        models: models
+      };
+      
+      try {
+        const response = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newConfig)
+        });
+        const data = await response.json();
+        if (data.success) {
+          showToast('Configuration saved successfully', 'success');
+          config = data.config;
+        } else {
+          showToast('Failed to save: ' + data.error, 'danger');
+        }
+      } catch (error) {
+        showToast('Failed to save configuration', 'danger');
+      }
+    }
+
+    // Restart proxy
+    async function restartProxy() {
+      if (confirm('Restart the proxy? This may interrupt active requests.')) {
+        try {
+          const response = await fetch('/api/restart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await response.json();
+          if (data.success) {
+            showToast('Restart initiated successfully', 'success');
+            setTimeout(() => checkHealth(), 3000);
+          }
+        } catch (error) {
+          showToast('Restart failed: ' + error.message, 'danger');
+        }
+      }
+    }
+
+    // Update stats
+    function updateStats() {
+      document.getElementById('totalKeys').textContent = apiKeys.length;
+      document.getElementById('activeKeys').textContent = apiKeys.filter(k => k.status === 'active').length;
+      document.getElementById('totalModels').textContent = models.filter(m => m.enabled).length;
+    }
+
+    // Update environment info
+    function updateEnvironmentInfo() {
+      document.getElementById('workDir').textContent = window.location.pathname;
+      document.getElementById('platform').textContent = navigator.platform;
+      document.getElementById('nodeVersion').textContent = 'Bun Proxy';
+    }
+
+    // Utility functions
+    function maskKey(key) {
+      if (!key || key.length < 20) return '****';
+      return `${key.substring(0, 10)}...${key.substring(key.length - 8)}`;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

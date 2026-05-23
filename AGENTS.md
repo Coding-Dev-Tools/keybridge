@@ -11,6 +11,10 @@ This is a Bun-based proxy server that creates OpenAI-compatible endpoints for th
 - Model list endpoint ✅
 - Health check endpoint ✅
 - Opencode auto-configuration ✅
+- Web dashboard with multi-key management ✅
+- Key quota/balance (monthlyCredits) display per key ✅
+- Real user name (userName) display per key ✅
+- Auto-validate all keys on dashboard load ✅
 
 ## Architecture
 

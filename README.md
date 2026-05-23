@@ -14,6 +14,7 @@ A Bun-based proxy that creates OpenAI-compatible endpoints for the Command Code 
 - ✅ **Usage statistics** (input/output tokens, cache hits)
 - ✅ **Health check endpoint** with CLI version reporting
 - ✅ **Proper SSE chunk formatting** per OpenAI spec
+- ✅ **Web Dashboard** with API key management
 
 ## Quick Start
 
@@ -23,6 +24,16 @@ bun run proxy.js
 ```
 
 Proxy runs on `http://localhost:3000`
+
+### Web Dashboard
+
+Open your browser to `http://localhost:3000/dashboard` to access the web dashboard where you can:
+
+- Manage multiple API keys
+- Enable/disable models
+- Configure proxy settings
+- Monitor proxy health
+- Test connections
 
 ## Opencode Integration
 
@@ -44,6 +55,54 @@ The config includes all supported models:
 - Kimi K2.6
 
 ## API Endpoints
+
+### Dashboard
+
+#### `GET /dashboard`
+
+Web-based dashboard for managing API keys and proxy configuration.
+
+Access at: `http://localhost:3000/dashboard`
+
+### Management API
+
+#### `GET /api/config`
+
+Get current proxy configuration.
+
+#### `POST /api/config`
+
+Update proxy configuration.
+
+#### `GET /api/keys`
+
+List all configured API keys.
+
+#### `POST /api/keys`
+
+Add a new API key.
+
+#### `PUT /api/keys`
+
+Update an existing API key.
+
+#### `DELETE /api/keys`
+
+Delete an API key.
+
+#### `GET /api/models`
+
+List all models with enabled status.
+
+#### `POST /api/models`
+
+Update model enabled status.
+
+#### `POST /api/restart`
+
+Initiate proxy restart.
+
+### Standard Endpoints
 
 ### `GET /health`
 
@@ -126,6 +185,17 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 | `COMMAND_CODE_API_URL` | `https://api.commandcode.ai` | API base URL |
 | `COMMAND_CODE_CLI_VERSION` | `0.26.24` | CLI version header |
 | `PROXY_PORT` | `3000` | Proxy server port |
+
+## Configuration File
+
+The proxy stores configuration in `proxy-config.json` in the working directory. This includes:
+
+- API keys (multiple keys supported)
+- Model enabled/disabled status
+- Bind host and port settings
+- API URL and CLI version
+
+The web dashboard automatically reads/writes this file.
 
 ## Message Format
 
