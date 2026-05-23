@@ -24,6 +24,25 @@ bun run proxy.js
 
 Proxy runs on `http://localhost:3000`
 
+## Opencode Integration
+
+The proxy automatically creates an opencode configuration file at `%USERPROFILE%\.opencode\opencode.json` when it starts. This configures opencode to use the proxy as a provider.
+
+**To use with opencode:**
+
+1. Start the proxy
+2. Run `opencode` in your terminal
+3. Run `/connect` and select **Command Code Proxy**
+4. Run `/models` and select a model
+
+The config includes all supported models:
+- DeepSeek V4 Pro
+- DeepSeek V4 Flash
+- MiniMax M2.7
+- Qwen 3.6 Plus
+- GLM 5.1
+- Kimi K2.6
+
 ## API Endpoints
 
 ### `GET /health`

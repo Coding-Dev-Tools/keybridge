@@ -5,6 +5,56 @@ const BASE = process.env.COMMAND_CODE_API_URL || 'https://api.commandcode.ai';
 const CLI_VER = process.env.COMMAND_CODE_CLI_VERSION || '0.26.24';
 const PORT = parseInt(process.env.PROXY_PORT || '3000');
 
+function setupOpencodeConfig() {
+  const os = require('os');
+  const fs = require('fs');
+  const path = require('path');
+  
+  const opencodeDir = path.join(os.homedir(), '.opencode');
+  const configFile = path.join(opencodeDir, 'opencode.json');
+  
+  try {
+    if (!fs.existsSync(opencodeDir)) {
+      fs.mkdirSync(opencodeDir, { recursive: true });
+    }
+    
+    let config = {
+      $schema: 'https://opencode.ai/config.json'
+    };
+    
+    if (fs.existsSync(configFile)) {
+      config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    }
+    
+    if (!config.provider || typeof config.provider !== 'object') {
+      config.provider = {};
+    }
+    
+    config.provider['commandcode'] = {
+      npm: '@ai-sdk/openai-compatible',
+      name: 'Command Code Proxy',
+      options: {
+        baseURL: `http://localhost:${PORT}/v1`
+      },
+      models: {
+        'deepseek/deepseek-v4-pro': { name: 'DeepSeek V4 Pro' },
+        'deepseek/deepseek-v4-flash': { name: 'DeepSeek V4 Flash' },
+        'MiniMaxAI/MiniMax-M2.7': { name: 'MiniMax M2.7' },
+        'Qwen/Qwen3.6-Plus': { name: 'Qwen 3.6 Plus' },
+        'zai-org/GLM-5.1': { name: 'GLM 5.1' },
+        'moonshotai/Kimi-K2.6': { name: 'Kimi K2.6' }
+      }
+    };
+    
+    fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+    console.log(`Opencode config updated at ${configFile}`);
+  } catch (e) {
+    console.error('Failed to update opencode config:', e.message);
+  }
+}
+
+setupOpencodeConfig();
+
 function convertMessage(m) {
   if (m.role === 'system') return null;
   if (m.role === 'tool') {

@@ -4,12 +4,13 @@ This is a Bun-based proxy server that creates OpenAI-compatible endpoints for th
 
 ## Project Status
 
-**Functional but incomplete.** Core features working:
+**Functional and ready for use.** Core features working:
 - Non-streaming chat completions ✅
 - Streaming chat completions ✅
 - Tool calls (function tools, tool-calls) ✅
 - Model list endpoint ✅
 - Health check endpoint ✅
+- Opencode auto-configuration ✅
 
 ## Architecture
 
@@ -31,6 +32,35 @@ The proxy:
 - `.env.example` — Example environment file
 - `README.md` — Documentation
 - `AGENTS.md` — This file (project memory)
+
+## Opencode Auto-Configuration
+
+On startup, the proxy creates/updates `%USERPROFILE%\.opencode\opencode.json` with:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "commandcode": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Command Code Proxy",
+      "options": {
+        "baseURL": "http://localhost:3000/v1"
+      },
+      "models": {
+        "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro" },
+        "deepseek/deepseek-v4-flash": { "name": "DeepSeek V4 Flash" },
+        "MiniMaxAI/MiniMax-M2.7": { "name": "MiniMax M2.7" },
+        "Qwen/Qwen3.6-Plus": { "name": "Qwen 3.6 Plus" },
+        "zai-org/GLM-5.1": { "name": "GLM 5.1" },
+        "moonshotai/Kimi-K2.6": { "name": "Kimi K2.6" }
+      }
+    }
+  }
+}
+```
+
+This allows opencode users to connect via `/connect` command without manual configuration.
 
 ## Environment Variables
 
