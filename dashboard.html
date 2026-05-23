@@ -72,11 +72,11 @@
       z-index: 3;
       border-radius: inherit;
       overflow: hidden;
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(0, 0, 0, 0.1);
     }
 
     .card-header {
-      background: rgba(0, 0, 0, 0.4) !important;
+      background: rgba(0, 0, 0, 0.2) !important;
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
       font-weight: 600;
       text-transform: uppercase;
@@ -89,7 +89,7 @@
     }
 
     .card-body {
-      padding: 1.25rem;
+      padding: 0.5rem;
       position: relative;
       z-index: 4;
       backdrop-filter: blur(13px) !important;
@@ -239,6 +239,23 @@
       font-family: 'Courier New', monospace;
       font-size: 13px;
     }
+
+    .collapsible-header {
+      cursor: pointer;
+      user-select: none;
+    }
+    .collapsible-header .toggle-icon {
+      transition: transform 0.2s ease;
+    }
+    .collapsible-header .toggle-icon.collapsed {
+      transform: rotate(-90deg);
+    }
+    .collapse-section {
+      transition: all 0.3s ease;
+    }
+    .collapse-section.collapsed {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -251,8 +268,8 @@
     <div class="card sticky-top" style="top:10px;z-index:100" data-glass>
       <div class="glass-panel"></div>
       <div class="card-content">
-        <div class="py-3">
-          <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="d-flex justify-content-between align-items-center">
             <div>
               <h4 class="mb-0"><i class="bi bi-hexagon-fill me-2"></i>Command Code Proxy Dashboard</h4>
               <small class="text-muted">Manage API keys and monitor proxy status</small>
@@ -270,7 +287,7 @@
     </div>
 
     <!-- Stats Row -->
-    <div class="row mb-4">
+    <div class="row">
       <div class="col-md-3 col-sm-6">
         <div class="stats-card card" data-glass>
           <div class="glass-panel"></div>
@@ -313,29 +330,33 @@
       <!-- Left Column -->
       <div class="col-lg-7">
         <!-- API Keys Management -->
-        <div class="card" data-glass>
+        <div class="card" data-glass data-section="keys">
           <div class="glass-panel"></div>
           <div class="card-content">
-            <div class="card-header d-flex justify-content-between align-items-center">
-              <span><i class="bi bi-key-fill me-2"></i>API Keys Management</span>
-              <button class="btn btn-sm btn-white-bg" onclick="addApiKey()">
+            <div class="card-header collapsible-header d-flex justify-content-between align-items-center" onclick="toggleSection('keys')">
+              <span>
+                <i class="bi bi-chevron-down toggle-icon me-1"></i>
+                <i class="bi bi-key-fill me-2"></i>API Keys Management
+              </span>
+              <button class="btn btn-sm btn-white-bg" onclick="event.stopPropagation();addApiKey()">
                 <i class="bi bi-plus-lg me-1"></i>Add Key
               </button>
             </div>
-            <div class="card-body">
+            <div class="card-body collapse-section" id="section-keys">
               <div id="apiKeysContainer"></div>
             </div>
           </div>
         </div>
 
         <!-- Proxy Configuration -->
-        <div class="card" data-glass>
+        <div class="card" data-glass data-section="config">
           <div class="glass-panel"></div>
           <div class="card-content">
-            <div class="card-header">
+            <div class="card-header collapsible-header" onclick="toggleSection('config')">
+              <i class="bi bi-chevron-down toggle-icon collapsed me-1"></i>
               <i class="bi bi-gear-fill me-2"></i>Proxy Configuration
             </div>
-            <div class="card-body">
+            <div class="card-body collapse-section collapsed" id="section-config">
               <form id="configForm">
                 <div class="row mb-3">
                   <div class="col-md-6">
@@ -367,26 +388,28 @@
       <!-- Right Column -->
       <div class="col-lg-5">
         <!-- Models Status -->
-        <div class="card" data-glass>
+        <div class="card" data-glass data-section="models">
           <div class="glass-panel"></div>
           <div class="card-content">
-            <div class="card-header">
+            <div class="card-header collapsible-header" onclick="toggleSection('models')">
+              <i class="bi bi-chevron-down toggle-icon me-1"></i>
               <i class="bi bi-cpu-fill me-2"></i>Available Models
             </div>
-            <div class="card-body">
+            <div class="card-body collapse-section" id="section-models">
               <div id="modelsContainer"></div>
             </div>
           </div>
         </div>
 
         <!-- Quick Actions -->
-        <div class="card" data-glass>
+        <div class="card" data-glass data-section="actions">
           <div class="glass-panel"></div>
           <div class="card-content">
-            <div class="card-header">
+            <div class="card-header collapsible-header" onclick="toggleSection('actions')">
+              <i class="bi bi-chevron-down toggle-icon collapsed me-1"></i>
               <i class="bi bi-lightning-charge-fill me-2"></i>Quick Actions
             </div>
-            <div class="card-body">
+            <div class="card-body collapse-section collapsed" id="section-actions">
               <div class="d-grid gap-2">
                 <button class="btn btn-outline-action" onclick="checkHealth()">
                   <i class="bi bi-activity me-2"></i>Check Health
@@ -412,13 +435,14 @@
         </div>
 
         <!-- Environment Info -->
-        <div class="card" data-glass>
+        <div class="card" data-glass data-section="env">
           <div class="glass-panel"></div>
           <div class="card-content">
-            <div class="card-header">
+            <div class="card-header collapsible-header" onclick="toggleSection('env')">
+              <i class="bi bi-chevron-down toggle-icon collapsed me-1"></i>
               <i class="bi bi-info-circle-fill me-2"></i>Environment
             </div>
-            <div class="card-body">
+            <div class="card-body collapse-section collapsed" id="section-env">
               <div class="mb-2">
                 <small class="text-muted">Working Directory</small>
                 <div class="fw-medium text-truncate" id="workDir">-</div>
@@ -428,7 +452,7 @@
                 <div class="fw-medium" id="platform">-</div>
               </div>
               <div class="mb-2">
-                <small class="text-muted">Node Version</small>
+                <small class="text-muted">Runtime</small>
                 <div class="fw-medium" id="nodeVersion">-</div>
               </div>
             </div>
@@ -679,6 +703,8 @@
       checkHealth();
       updateEnvironmentInfo();
       fetchBingWallpaper();
+      // Ping proxy health every 5s silently
+      setInterval(() => checkHealth(true), 5000);
     });
 
     // Toast notifications
@@ -775,9 +801,10 @@
         
         const loading = key.loading ? `
           <div class="text-center py-2">
-            <div class="spinner-border spinner-border-sm text-primary" role="status">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
               <span class="visually-hidden">Loading...</span>
             </div>
+            <small class="text-muted">Checking...</small>
           </div>
         ` : '';
 
@@ -972,6 +999,10 @@
     async function validateAllKeys() {
       showToast('Checking all API keys...', 'info');
       
+      // Mark all keys as loading
+      apiKeys.forEach(k => k.loading = true);
+      renderApiKeys();
+      
       try {
         const response = await fetch('/api/keys/validate-all', {
           method: 'POST',
@@ -993,11 +1024,14 @@
         }
       } catch (error) {
         showToast('Failed to validate keys: ' + error.message, 'danger');
+      } finally {
+        apiKeys.forEach(k => k.loading = false);
+        renderApiKeys();
       }
     }
 
     // Check health
-    async function checkHealth() {
+    async function checkHealth(silent = false) {
       try {
         const response = await fetch('/health');
         const data = await response.json();
@@ -1005,14 +1039,14 @@
         if (data.status === 'ok') {
           document.getElementById('statusIndicator').className = 'status-indicator status-online';
           document.getElementById('statusText').textContent = 'Online';
-          showToast('Proxy is healthy', 'success');
+          if (!silent) showToast('Proxy is healthy', 'success');
         } else {
           throw new Error('Unhealthy status');
         }
       } catch (error) {
         document.getElementById('statusIndicator').className = 'status-indicator status-offline';
         document.getElementById('statusText').textContent = 'Offline';
-        showToast('Proxy health check failed', 'danger');
+        if (!silent) showToast('Proxy health check failed', 'danger');
       }
     }
 
@@ -1093,10 +1127,28 @@
     }
 
     // Update environment info
-    function updateEnvironmentInfo() {
-      document.getElementById('workDir').textContent = window.location.pathname;
-      document.getElementById('platform').textContent = navigator.platform;
-      document.getElementById('nodeVersion').textContent = 'Bun Proxy';
+    async function updateEnvironmentInfo() {
+      try {
+        const r = await fetch('/health');
+        const data = await r.json();
+        document.getElementById('workDir').textContent = data.cwd || '-';
+        document.getElementById('platform').textContent = data.platform || '-';
+        document.getElementById('nodeVersion').textContent = data.runtime || '-';
+      } catch (e) {
+        document.getElementById('workDir').textContent = '-';
+        document.getElementById('platform').textContent = '-';
+        document.getElementById('nodeVersion').textContent = '-';
+      }
+    }
+
+    // Toggle collapsible sections
+    function toggleSection(name) {
+      const body = document.getElementById('section-' + name);
+      const card = body.closest('[data-section]');
+      const icon = card.querySelector('.toggle-icon');
+      body.classList.toggle('collapsed');
+      icon.classList.toggle('collapsed');
+      setTimeout(() => initLiquidGlass(), 50);
     }
 
     // Utility functions

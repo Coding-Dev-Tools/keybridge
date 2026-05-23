@@ -101,6 +101,17 @@ function convertTools(tools) {
   }).filter(Boolean);
 }
 
+// crypto.randomUUID helper for Bun / Node cross-compat
+function randomUUID() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return randomUUID();
+    }
+  } catch (err) {}
+  const { randomUUID: nodeRandomUUID } = require('crypto');
+  return nodeRandomUUID();
+}
+
 async function readAllEvents(resp) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
@@ -296,438 +307,470 @@ async function getKeyInfo(apiKey) {
   }
 }
 
-const server = Bun.serve({
-  port: PORT,
-  async fetch(request) {
-    const url = new URL(request.url);
+const http = require('http');
+const url = require('url');
 
-    if (url.pathname === '/dashboard' || url.pathname === '/') {
-      const dashboardPath = path.join(process.cwd(), 'dashboard.html');
-      if (fs.existsSync(dashboardPath)) {
-        return new Response(fs.readFileSync(dashboardPath), {
-          headers: { 'Content-Type': 'text/html' }
-        });
-      }
-      return new Response('Dashboard not found', { status: 404 });
+// Determine content-type helper
+function getContentType(pathname) {
+  if (pathname.endsWith('.html')) return 'text/html';
+  if (pathname.endsWith('.js')) return 'application/javascript';
+  if (pathname.endsWith('.css')) return 'text/css';
+  if (pathname.endsWith('.json')) return 'application/json';
+  if (pathname.endsWith('.png')) return 'image/png';
+  if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) return 'image/jpeg';
+  return 'application/octet-stream';
+}
+
+async function handleRequest(req, res) {
+  const parsedUrl = url.parse(req.url, true);
+  const pathname = parsedUrl.pathname;
+
+  if (pathname === '/dashboard' || pathname === '/') {
+    const dashboardPath = path.join(process.cwd(), 'dashboard.html');
+    if (fs.existsSync(dashboardPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(fs.readFileSync(dashboardPath));
+      return;
     }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Dashboard not found');
+    return;
+  }
 
-    if (url.pathname === '/api/config') {
-      if (request.method === 'GET') {
-        return new Response(JSON.stringify(proxyConfig), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      if (request.method === 'POST') {
-        try {
-          const newConfig = await request.json();
-          proxyConfig = { ...proxyConfig, ...newConfig };
-          if (saveConfig(proxyConfig)) {
-            return new Response(JSON.stringify({ success: true, config: proxyConfig }), {
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          return new Response(JSON.stringify({ error: 'Failed to save config' }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
+  if (pathname === '/api/config') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(proxyConfig));
+      return;
     }
-
-    if (url.pathname === '/api/keys') {
-      if (request.method === 'GET') {
-        return new Response(JSON.stringify({ keys: proxyConfig.apiKeys || [] }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      if (request.method === 'POST') {
-        try {
-          const { name, value, status } = await request.json();
-          if (!name || !value) {
-            return new Response(JSON.stringify({ error: 'Name and value required' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          if (!proxyConfig.apiKeys) proxyConfig.apiKeys = [];
-          proxyConfig.apiKeys.push({ name, value, status: status || 'active' });
-          saveConfig(proxyConfig);
-          return new Response(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
+    if (req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const newConfig = JSON.parse(body);
+        proxyConfig = { ...proxyConfig, ...newConfig };
+        if (saveConfig(proxyConfig)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, config: proxyConfig }));
+        } else {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to save config' }));
         }
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
       }
-      if (request.method === 'DELETE') {
-        try {
-          const { index } = await request.json();
-          if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
-            return new Response(JSON.stringify({ error: 'Invalid index' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          proxyConfig.apiKeys.splice(index, 1);
-          saveConfig(proxyConfig);
-          return new Response(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
-      if (request.method === 'PUT') {
-        try {
-          const { index, name, value, status } = await request.json();
-          if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
-            return new Response(JSON.stringify({ error: 'Invalid index' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          if (!name || !value) {
-            return new Response(JSON.stringify({ error: 'Name and value required' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          proxyConfig.apiKeys[index] = { name, value, status: status || 'active' };
-          saveConfig(proxyConfig);
-          return new Response(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
+      return;
     }
+  }
 
-    if (url.pathname === '/api/models') {
-      if (request.method === 'GET') {
-        return new Response(JSON.stringify({ models: proxyConfig.models || [] }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      if (request.method === 'POST') {
-        try {
-          const { models } = await request.json();
-          proxyConfig.models = models;
-          saveConfig(proxyConfig);
-          return new Response(JSON.stringify({ success: true, models: proxyConfig.models }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
+  if (pathname === '/api/keys') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ keys: proxyConfig.apiKeys || [] }));
+      return;
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const { name, value, status } = JSON.parse(body);
+        if (!name || !value) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Name and value required' }));
+          return;
         }
+        if (!proxyConfig.apiKeys) proxyConfig.apiKeys = [];
+        proxyConfig.apiKeys.push({ name, value, status: status || 'active' });
+        saveConfig(proxyConfig);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
       }
+      return;
     }
-
-    if (url.pathname === '/api/restart') {
-      if (request.method === 'POST') {
-        console.log('Restart requested...');
-        return new Response(JSON.stringify({ success: true, message: 'Restart initiated' }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+    if (req.method === 'DELETE') {
+      try {
+        const body = await readBody(req);
+        const { index } = JSON.parse(body);
+        if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid index' }));
+          return;
+        }
+        proxyConfig.apiKeys.splice(index, 1);
+        saveConfig(proxyConfig);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
       }
+      return;
     }
+    if (req.method === 'PUT') {
+      try {
+        const body = await readBody(req);
+        const { index, name, value, status } = JSON.parse(body);
+        if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid index' }));
+          return;
+        }
+        if (!name || !value) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Name and value required' }));
+          return;
+        }
+        proxyConfig.apiKeys[index] = { name, value, status: status || 'active' };
+        saveConfig(proxyConfig);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, keys: proxyConfig.apiKeys }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
 
-    if (url.pathname === '/api/keys/quota') {
-      if (request.method === 'POST') {
-        try {
-          const { index } = await request.json();
-          if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
-            return new Response(JSON.stringify({ error: 'Invalid index' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          
-          const apiKey = proxyConfig.apiKeys[index].value;
+  if (pathname === '/api/models') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ models: proxyConfig.models || [] }));
+      return;
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const { models } = JSON.parse(body);
+        proxyConfig.models = models;
+        saveConfig(proxyConfig);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, models: proxyConfig.models }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
+
+  if (pathname === '/api/restart') {
+    if (req.method === 'POST') {
+      console.log('Restart requested...');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Restart initiated' }));
+      return;
+    }
+  }
+
+  if (pathname === '/api/keys/quota') {
+    if (req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const { index } = JSON.parse(body);
+        if (index === undefined || index < 0 || index >= (proxyConfig.apiKeys?.length || 0)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid index' }));
+          return;
+        }
+
+        const apiKey = proxyConfig.apiKeys[index].value;
+        const [quota, usage, info] = await Promise.all([
+          checkKeyQuota(apiKey),
+          checkKeyUsage(apiKey),
+          getKeyInfo(apiKey)
+        ]);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          quota,
+          usage,
+          info,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
+
+  if (pathname === '/api/keys/validate-all') {
+    if (req.method === 'POST') {
+      try {
+        const results = [];
+        for (let i = 0; i < (proxyConfig.apiKeys?.length || 0); i++) {
+          const apiKey = proxyConfig.apiKeys[i].value;
           const [quota, usage, info] = await Promise.all([
             checkKeyQuota(apiKey),
             checkKeyUsage(apiKey),
             getKeyInfo(apiKey)
           ]);
-          
-          return new Response(JSON.stringify({
-            success: true,
+          results.push({
+            index: i,
+            name: proxyConfig.apiKeys[i].name,
             quota,
             usage,
-            info,
-            timestamp: new Date().toISOString()
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
+            info
           });
         }
-      }
-    }
 
-    if (url.pathname === '/api/keys/validate-all') {
-      if (request.method === 'POST') {
-        try {
-          const results = [];
-          for (let i = 0; i < (proxyConfig.apiKeys?.length || 0); i++) {
-            const apiKey = proxyConfig.apiKeys[i].value;
-            const [quota, usage, info] = await Promise.all([
-              checkKeyQuota(apiKey),
-              checkKeyUsage(apiKey),
-              getKeyInfo(apiKey)
-            ]);
-            results.push({
-              index: i,
-              name: proxyConfig.apiKeys[i].name,
-              quota,
-              usage,
-              info
-            });
-          }
-          
-          return new Response(JSON.stringify({
-            success: true,
-            results,
-            timestamp: new Date().toISOString()
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
-    }
-
-    if (url.pathname === '/api/bg') {
-      try {
-        const resp = await fetch('https://peapix.com/bing/feed');
-        const data = await resp.json();
-        const item = Array.isArray(data) ? data[0] : data;
-        const imgUrl = item.fullUrl || item.imageUrl || item.url || '';
-        if (imgUrl) {
-          return new Response(JSON.stringify({ url: imgUrl }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          results,
+          timestamp: new Date().toISOString()
+        }));
       } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
+
+  if (pathname === '/api/bg') {
+    try {
+      const resp = await fetch('https://peapix.com/bing/feed');
+      const data = await resp.json();
+      const item = Array.isArray(data) ? data[0] : data;
+      const imgUrl = item.fullUrl || item.imageUrl || item.url || '';
+      if (imgUrl) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ url: imgUrl }));
+      } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'not found' }));
+      }
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+    if (pathname === '/health') {
+      let runtime = process.env.PROXY_RUNTIME || '';
+      if (runtime === 'node') {
+        runtime = 'Node.js ' + process.version;
+      } else if (!runtime) {
+        runtime = typeof Bun !== 'undefined' ? 'Bun ' + (Bun?.version || '') : 'Node.js ' + process.version;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'ok',
+        version: '1.0.0',
+        cli_version: CLI_VER,
+        runtime,
+        platform: process.platform + '-' + process.arch,
+        cwd: process.cwd()
+      }));
+      return;
+    }
+
+  if (pathname === '/v1/models') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      object: 'list', data: [
+        { id: 'deepseek/deepseek-v4-pro', object: 'model', created: Date.now(), owned_by: 'deepseek' },
+        { id: 'deepseek/deepseek-v4-flash', object: 'model', created: Date.now(), owned_by: 'deepseek' },
+        { id: 'MiniMaxAI/MiniMax-M2.7', object: 'model', created: Date.now(), owned_by: 'minimax' },
+        { id: 'Qwen/Qwen3.6-Plus', object: 'model', created: Date.now(), owned_by: 'qwen' },
+        { id: 'zai-org/GLM-5.1', object: 'model', created: Date.now(), owned_by: 'zai' },
+        { id: 'moonshotai/Kimi-K2.6', object: 'model', created: Date.now(), owned_by: 'moonshot' },
+      ]
+    }));
+    return;
+  }
+
+  if (pathname === '/v1/chat/completions') {
+    let reqBody;
+    try {
+      const body = await readBody(req);
+      reqBody = JSON.parse(body);
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'Invalid JSON', type: 'invalid_request_error' } }));
+      return;
+    }
+
+    const sysMsg = (reqBody.messages || []).find(m => m.role === 'system')?.content || '';
+    const msgs = (reqBody.messages || []).map(m => convertMessage(m)).filter(Boolean);
+    const tools = convertTools(reqBody.tools || []);
+
+    const ccBody = {
+      config: {
+        workingDir: process.cwd(), 
+        date: new Date().toISOString().split('T')[0],
+        environment: `${process.platform}-${process.arch}`,
+        structure: [], isGitRepo: false, currentBranch: 'main', mainBranch: 'main', gitStatus: '', recentCommits: []
+      },
+      memory: '', taste: '', skills: null, permissionMode: 'standard',
+      params: {
+        model: reqBody.model || 'deepseek/deepseek-v4-pro',
+        messages: msgs,
+        tools: tools,
+        system: sysMsg,
+        max_tokens: reqBody.max_tokens || 4096,
+        temperature: reqBody.temperature ?? 0.3,
+        stream: true
+      },
+      threadId: randomUUID()
+    };
+
+    const apiKey = getActiveApiKey();
+    if (!apiKey) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'No API key configured', type: 'configuration_error' } }));
+      return;
+    }
+
+    const r = await fetch(`${BASE}/alpha/generate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'x-command-code-version': CLI_VER
+      },
+      body: JSON.stringify(ccBody)
+    });
+
+    if (!r.ok) {
+      const text = await r.text();
+      let msg = text;
+      try { msg = JSON.parse(text).error?.message || msg; } catch (e) {}
+      res.writeHead(r.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: msg, type: 'api_error' } }));
+      return;
+    }
+
+    const events = await readAllEvents(r);
+    let textContent = '';
+    let toolCalls = [];
+    let usage = {};
+    let finishReason = 'stop';
+    let currentToolCall = null;
+
+    for (const ev of events) {
+      const t = ev.type;
+      if (t === 'text-delta') textContent += ev.text || '';
+      else if (t === 'tool-input-start') {
+        currentToolCall = { index: toolCalls.length, id: ev.id, name: ev.toolName, args: '' };
+      }
+      else if (t === 'tool-input-delta' && currentToolCall) {
+        currentToolCall.args += ev.delta || '';
+      }
+      else if (t === 'tool-input-end' && currentToolCall) {
+        toolCalls.push({
+          id: currentToolCall.id, type: 'function',
+          function: { name: currentToolCall.name, arguments: currentToolCall.args }
+        });
+        currentToolCall = null;
+      }
+      else if (t === 'tool-call') {
+        toolCalls.push({
+          id: ev.toolCallId, type: 'function',
+          function: { name: ev.toolName, arguments: JSON.stringify(ev.input || {}) }
+        });
+      }
+      else if (t === 'finish' || t === 'finish-step') {
+        if (ev.finishReason === 'tool-calls') finishReason = 'tool_calls';
+        else if (ev.finishReason === 'stop' || ev.finishReason === 'end_turn') finishReason = 'stop';
+        else if (ev.finishReason) finishReason = ev.finishReason;
+        usage = ev.totalUsage || ev.usage || {};
       }
     }
 
-    if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ status: 'ok', version: '1.0.0', cli_version: CLI_VER }), { 
-        headers: { 'Content-Type': 'application/json' } 
+    if (reqBody.stream === true) {
+      // Node.js streaming response
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
       });
-    }
 
-    if (url.pathname === '/v1/models') {
-      return new Response(JSON.stringify({
-        object: 'list', data: [
-          { id: 'deepseek/deepseek-v4-pro', object: 'model', created: Date.now(), owned_by: 'deepseek' },
-          { id: 'deepseek/deepseek-v4-flash', object: 'model', created: Date.now(), owned_by: 'deepseek' },
-          { id: 'MiniMaxAI/MiniMax-M2.7', object: 'model', created: Date.now(), owned_by: 'minimax' },
-          { id: 'Qwen/Qwen3.6-Plus', object: 'model', created: Date.now(), owned_by: 'qwen' },
-          { id: 'zai-org/GLM-5.1', object: 'model', created: Date.now(), owned_by: 'zai' },
-          { id: 'moonshotai/Kimi-K2.6', object: 'model', created: Date.now(), owned_by: 'moonshot' },
-        ]
-      }), { headers: { 'Content-Type': 'application/json' } });
-    }
-
-    if (url.pathname === '/v1/chat/completions') {
-      let reqBody;
-      try { reqBody = await request.json(); } catch (e) {
-        return new Response(JSON.stringify({ error: { message: 'Invalid JSON', type: 'invalid_request_error' } }), { 
-          status: 400, headers: { 'Content-Type': 'application/json' } 
-        });
-      }
-
-      const sysMsg = (reqBody.messages || []).find(m => m.role === 'system')?.content || '';
-      const msgs = (reqBody.messages || []).map(m => convertMessage(m)).filter(Boolean);
-      const tools = convertTools(reqBody.tools || []);
-
-      const ccBody = {
-        config: {
-          workingDir: process.cwd(), 
-          date: new Date().toISOString().split('T')[0],
-          environment: `${process.platform}-${process.arch}`,
-          structure: [], isGitRepo: false, currentBranch: 'main', mainBranch: 'main', gitStatus: '', recentCommits: []
-        },
-        memory: '', taste: '', skills: null, permissionMode: 'standard',
-        params: {
-          model: reqBody.model || 'deepseek/deepseek-v4-pro',
-          messages: msgs,
-          tools: tools,
-          system: sysMsg,
-          max_tokens: reqBody.max_tokens || 4096,
-          temperature: reqBody.temperature ?? 0.3,
-          stream: true
-        },
-        threadId: crypto.randomUUID()
-      };
-
-      const apiKey = getActiveApiKey();
-      if (!apiKey) {
-        return new Response(JSON.stringify({ error: { message: 'No API key configured', type: 'configuration_error' } }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      const r = await fetch(`${BASE}/alpha/generate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'x-command-code-version': CLI_VER
-        },
-        body: JSON.stringify(ccBody)
-      });
-
-      if (!r.ok) {
-        const text = await r.text();
-        let msg = text;
-        try { msg = JSON.parse(text).error?.message || msg; } catch (e) {}
-        return new Response(JSON.stringify({ error: { message: msg, type: 'api_error' } }), {
-          status: r.status, headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      const events = await readAllEvents(r);
-      let textContent = '';
-      let toolCalls = [];
-      let usage = {};
-      let finishReason = 'stop';
       let currentToolCall = null;
-
+      let toolCallIndex = 0;
       for (const ev of events) {
         const t = ev.type;
-        if (t === 'text-delta') textContent += ev.text || '';
-        else if (t === 'tool-input-start') {
-          currentToolCall = { index: toolCalls.length, id: ev.id, name: ev.toolName, args: '' };
-        }
-        else if (t === 'tool-input-delta' && currentToolCall) {
+        if (t === 'text-delta') {
+          const c = ev.text || '';
+          const data = `data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, reqBody.model, 0, { content: c }, null))}\n\n`;
+          res.write(data);
+        } else if (t === 'tool-input-start') {
+          currentToolCall = { index: toolCallIndex++, id: ev.id, name: ev.toolName, args: '' };
+        } else if (t === 'tool-input-delta' && currentToolCall) {
           currentToolCall.args += ev.delta || '';
-        }
-        else if (t === 'tool-input-end' && currentToolCall) {
-          toolCalls.push({
-            id: currentToolCall.id, type: 'function',
-            function: { name: currentToolCall.name, arguments: currentToolCall.args }
-          });
+        } else if (t === 'tool-input-end' && currentToolCall) {
+          const data = `data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, reqBody.model, 0, {
+            tool_calls: [{ index: currentToolCall.index, id: currentToolCall.id, type: 'function', function: { name: currentToolCall.name, arguments: currentToolCall.args } }]
+          }, null))}\n\n`;
+          res.write(data);
           currentToolCall = null;
-        }
-        else if (t === 'tool-call') {
-          toolCalls.push({
-            id: ev.toolCallId, type: 'function',
-            function: { name: ev.toolName, arguments: JSON.stringify(ev.input || {}) }
-          });
-        }
-        else if (t === 'finish' || t === 'finish-step') {
-          if (ev.finishReason === 'tool-calls') finishReason = 'tool_calls';
-          else if (ev.finishReason === 'stop' || ev.finishReason === 'end_turn') finishReason = 'stop';
-          else if (ev.finishReason) finishReason = ev.finishReason;
-          usage = ev.totalUsage || ev.usage || {};
+        } else if (t === 'tool-call') {
+          const data = `data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, reqBody.model, 0, {
+            tool_calls: [{ index: toolCallIndex++, id: ev.toolCallId, type: 'function', function: { name: ev.toolName, arguments: JSON.stringify(ev.input || {}) } }]
+          }, null))}\n\n`;
+          res.write(data);
+        } else if (t === 'finish' || t === 'finish-step') {
+          const fr = ev.finishReason === 'tool-calls' ? 'tool_calls' : (ev.finishReason === 'stop' || ev.finishReason === 'end_turn' ? 'stop' : ev.finishReason || 'stop');
+          const u = ev.totalUsage || ev.usage || {};
+          const final = {
+            id: `chatcmpl-${randomUUID()}`, object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000), model: reqBody.model,
+            choices: [{ index: 0, delta: {}, finish_reason: fr }]
+          };
+          if (u.totalTokens) final.usage = { prompt_tokens: u.inputTokens || 0, completion_tokens: u.outputTokens || 0, total_tokens: u.totalTokens || 0 };
+          res.write(`data: ${JSON.stringify(final)}\n\n`);
+          res.write(`data: [DONE]\n\n`);
+        } else if (t === 'error') {
+          const data = `data: ${JSON.stringify({ id: `chatcmpl-${randomUUID()}`, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: reqBody.model, choices: [{ index: 0, delta: {}, finish_reason: 'error' }] })}\n\n`;
+          res.write(data);
+          res.write(`data: [DONE]\n\n`);
         }
       }
-
-      if (reqBody.stream === true) {
-        const stream = new ReadableStream({
-          async start(controller) {
-            let currentToolCall = null;
-            let toolCallIndex = 0;
-            for (const ev of events) {
-              const t = ev.type;
-              if (t === 'text-delta') {
-                const c = ev.text || '';
-                controller.enqueue(new TextEncoder().encode(
-                  `data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${crypto.randomUUID()}`, reqBody.model, 0, { content: c }, null))}\n\n`
-                ));
-              } else if (t === 'tool-input-start') {
-                currentToolCall = { index: toolCallIndex++, id: ev.id, name: ev.toolName, args: '' };
-              } else if (t === 'tool-input-delta' && currentToolCall) {
-                currentToolCall.args += ev.delta || '';
-              } else if (t === 'tool-input-end' && currentToolCall) {
-                controller.enqueue(new TextEncoder().encode(
-                  `data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${crypto.randomUUID()}`, reqBody.model, 0, {
-                    tool_calls: [{ index: currentToolCall.index, id: currentToolCall.id, type: 'function', function: { name: currentToolCall.name, arguments: currentToolCall.args } }]
-                  }, null))}\n\n`
-                ));
-                currentToolCall = null;
-              } else if (t === 'tool-call') {
-                controller.enqueue(new TextEncoder().encode(
-                  `data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${crypto.randomUUID()}`, reqBody.model, 0, {
-                    tool_calls: [{ index: toolCallIndex++, id: ev.toolCallId, type: 'function', function: { name: ev.toolName, arguments: JSON.stringify(ev.input || {}) } }]
-                  }, null))}\n\n`
-                ));
-              } else if (t === 'finish' || t === 'finish-step') {
-                const fr = ev.finishReason === 'tool-calls' ? 'tool_calls' : (ev.finishReason === 'stop' || ev.finishReason === 'end_turn' ? 'stop' : ev.finishReason || 'stop');
-                const u = ev.totalUsage || ev.usage || {};
-                const final = {
-                  id: `chatcmpl-${crypto.randomUUID()}`, object: 'chat.completion.chunk',
-                  created: Math.floor(Date.now() / 1000), model: reqBody.model,
-                  choices: [{ index: 0, delta: {}, finish_reason: fr }]
-                };
-                if (u.totalTokens) final.usage = { prompt_tokens: u.inputTokens || 0, completion_tokens: u.outputTokens || 0, total_tokens: u.totalTokens || 0 };
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(final)}\n\n`));
-                controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
-              } else if (t === 'error') {
-                controller.enqueue(new TextEncoder().encode(
-                  `data: ${JSON.stringify({ id: `chatcmpl-${crypto.randomUUID()}`, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: reqBody.model, choices: [{ index: 0, delta: {}, finish_reason: 'error' }] })}\n\n`
-                ));
-                controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
-              }
-            }
-            controller.close();
-          }
-        });
-        return new Response(stream, {
-          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
-        });
-      }
-
-      const response = {
-        id: `chatcmpl-${crypto.randomUUID()}`, object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000), model: reqBody.model,
-        choices: [{
-          index: 0,
-          message: { role: 'assistant', content: textContent || null },
-          finish_reason: finishReason
-        }],
-        usage: { prompt_tokens: usage.inputTokens || 0, completion_tokens: usage.outputTokens || 0, total_tokens: usage.totalTokens || 0 }
-      };
-
-      if (toolCalls.length > 0) {
-        response.choices[0].message.tool_calls = toolCalls;
-      }
-
-      return new Response(JSON.stringify(response), { headers: { 'Content-Type': 'application/json' } });
+      res.end();
+      return;
     }
 
-    return new Response('Not Found', { status: 404 });
-  }
-});
+    const response = {
+      id: `chatcmpl-${randomUUID()}`, object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000), model: reqBody.model,
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: textContent || null },
+        finish_reason: finishReason
+      }],
+      usage: { prompt_tokens: usage.inputTokens || 0, completion_tokens: usage.outputTokens || 0, total_tokens: usage.totalTokens || 0 }
+    };
 
-console.log(`Command Code Proxy on http://localhost:${PORT}`);
+    if (toolCalls.length > 0) {
+      response.choices[0].message.tool_calls = toolCalls;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(response));
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('Not Found');
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+const server = http.createServer(handleRequest);
+server.listen(PORT, () => {
+  console.log(`Command Code Proxy on http://localhost:${PORT}`);
+});
