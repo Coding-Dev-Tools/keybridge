@@ -696,6 +696,14 @@
       }
     }
 
+    const CACHE_KEY = 'cc_proxy_key_cache';
+    function loadKeyCache() {
+      try { const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+    }
+    function saveKeyCache(keys) {
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(keys)); } catch (e) { console.error('Failed to save key cache', e); }
+    }
+
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
       initLiquidGlass();
@@ -742,7 +750,6 @@
           document.getElementById('proxyPortInput').value = configData.port || 3000;
           document.getElementById('apiUrl').value = configData.apiUrl || 'https://api.commandcode.ai';
           document.getElementById('cliVersion').value = configData.cliVersion || '0.26.24';
-          
           if (configData.apiKeys) {
             apiKeys = configData.apiKeys;
           }
@@ -750,10 +757,22 @@
             models = configData.models;
           }
         }
-        
+
+        // Load cached quota data immediately for instant display
+        const cached = loadKeyCache();
+        if (cached && cached.length > 0) {
+          apiKeys = apiKeys.map((k, i) => {
+            const c = cached.find(x => x.value === k.value);
+            return c ? { ...k, quota: c.quota, usage: c.usage, info: c.info, loading: true } : { ...k, loading: true };
+          });
+        } else {
+          apiKeys.forEach(k => k.loading = true);
+        }
         renderApiKeys();
         renderModels();
         updateStats();
+
+        // Background refresh
         validateAllKeys();
       } catch (error) {
         console.error('Failed to load config:', error);
@@ -776,12 +795,20 @@
       }
 
       container.innerHTML = apiKeys.map((key, index) => {
+        let balance = 0;
+        const credits = key.quota?.credits;
+        if (typeof credits === 'number') {
+          balance = credits;
+        } else if (credits && typeof credits === 'object') {
+          balance = Number(credits.monthlyCredits ?? credits.purchasedCredits ?? credits.freeCredits ?? 0);
+        }
+        const pctOf10 = Math.min((balance / 10) * 100, 100).toFixed(1);
         const quota = key.quota ? `
           <div class="mt-2 p-2 bg-light rounded">
             <div class="d-flex justify-content-between align-items-center">
               <small class="text-muted">
                 <i class="bi bi-wallet2 me-1"></i>
-                Balance: <strong class="text-success">$${Number(key.quota.credits?.monthlyCredits ?? key.quota.credits ?? 0).toFixed(2)}</strong>
+                Balance: <strong class="text-success">$${balance.toFixed(2)}</strong> <span style="font-size:0.75em;color:rgba(255,255,255,0.5)">(${pctOf10}% of $10)</span>
               </small>
               ${key.usage?.valid ? `
                 <small class="text-muted">
@@ -951,6 +978,8 @@
       const model = models.find(m => m.id === modelId);
       if (model) {
         model.enabled = !model.enabled;
+        renderModels();
+        updateStats();
         try {
           await fetch('/api/models', {
             method: 'POST',
@@ -960,6 +989,8 @@
           showToast(`${model.name} ${model.enabled ? 'enabled' : 'disabled'}`, 'info');
         } catch (error) {
           model.enabled = !model.enabled;
+          renderModels();
+          updateStats();
           showToast('Failed to update model', 'danger');
         }
       }
@@ -1019,6 +1050,7 @@
               apiKeys[index].info = result.info;
             }
           });
+          saveKeyCache(apiKeys.map(k => ({ value: k.value, quota: k.quota, usage: k.usage, info: k.info })));
           renderApiKeys();
           showToast(`Validated ${data.results.length} keys`, 'success');
         }
