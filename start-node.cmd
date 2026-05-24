@@ -1,5 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
+
+:: Kill any existing proxy windows using this specific title (and their child processes)
+taskkill /F /FI "WINDOWTITLE eq Command Code Proxy - Node.js Mode" /T >nul 2>&1
+
+:: Wait a brief moment to ensure ports are fully released
+timeout /t 1 /nobreak >nul
+
+:: NOW set the title for this new instance
 title Command Code Proxy - Node.js Mode
 cd /d "%~dp0"
 
@@ -11,9 +19,8 @@ echo ==================================================
 echo.
 
 echo [1/3] Cleaning up...
-taskkill /F /IM bun.exe >nul 2>&1
-taskkill /F /IM node.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
+:: (Cleanup handled by the title taskkill at the top)
+timeout /t 1 /nobreak >nul
 
 echo [2/3] Detecting Node.js...
 where node >nul 2>&1
