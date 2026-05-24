@@ -16,7 +16,11 @@ timeout /t 2 /nobreak >nul
 
 :: Start the proxy
 echo 🔗 Starting proxy server on port 3000...
-set COMMAND_CODE_API_KEY=user_2zpjnVs6Aow6kGEmCFqF2ns6dezzQ9ZSMsTrTT2BhsCwUW92MPYzHN45PSUYC82CkcqqLvD8H9UdX44ApTURD9EU
+if "%COMMAND_CODE_API_KEY%"=="" (
+    echo ⚠️ COMMAND_CODE_API_KEY not set. Please set it via: setx COMMAND_CODE_API_KEY "your_key"
+    pause
+    exit /b 1
+)
 call bun run proxy.js
 
 if errorlevel 1 (
