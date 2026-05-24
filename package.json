@@ -1,11 +1,12 @@
 {
   "name": "commandcode-proxy",
-  "version": "1.0.0",
-  "description": "Bun-based proxy for Command Code API with OpenAI-compatible endpoints",
+  "version": "2.0.0",
+  "description": "Local-first credential vault and OpenAI-compatible proxy for Command Code and other AI providers",
   "main": "proxy.js",
   "scripts": {
     "start": "bun run proxy.js",
-    "dev": "bun run --watch proxy.js"
+    "dev": "bun run --watch proxy.js",
+    "test": "node test-proxy.js"
   },
   "keywords": ["command-code", "proxy", "openai", "api"],
   "author": "",

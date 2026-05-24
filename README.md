@@ -1,281 +1,200 @@
-# Command Code Proxy
+# Command Code Vault Proxy
 
-<img width="1223" height="834" alt="image" src="https://github.com/user-attachments/assets/bd00818c-0e63-4b5e-8d43-ba4fe9eb5aa8" />
+Local-first credential vault and OpenAI-compatible proxy for Command Code and other AI providers.
 
+## What It Is
 
-**Inspired by [commandcode-bridge](https://github.com/yelixir-dev/commandcode-bridge)**
+This project now ships as a **single-user localhost vault**:
 
-A Bun-based proxy that creates OpenAI-compatible endpoints for the Command Code API (`api.commandcode.ai`). This proxy lets any OpenAI-compatible client use Command Code's models directly.
+- Stores Command Code keys, OpenAI-compatible API keys, bearer tokens, and OAuth token bundles in one place
+- Encrypts secrets at rest under `.config/`
+- Keeps secrets out of normal `GET` responses
+- Provides a local dashboard at `http://localhost:3000/dashboard`
+- Exposes OpenAI-compatible endpoints for model listing and chat completions
 
-## Features
+The proxy is intentionally **localhost only** for this release.
 
-- ✅ **OpenAI-compatible `/v1/*` endpoints**
-- ✅ **Streaming and non-streaming chat completions**
-- ✅ **Tool calling support** (function tools, tool-calls, tool-results)
-- ✅ **Reasoning events** (hidden by default, maps to internal reasoning)
-- ✅ **Multi-model support** (DeepSeek, MiniMax, Qwen, GLM, Kimi)
-- ✅ **Usage statistics** (input/output tokens, cache hits)
-- ✅ **Health check endpoint** with CLI version reporting
-- ✅ **Proper SSE chunk formatting** per OpenAI spec
-- ✅ **Web Dashboard** with API key management
+## Core Features
+
+- Encrypted credential vault with schema migration from legacy `apiKeys`
+- Unified dashboard for all providers and credential types
+- Masked secret reads by default
+- Explicit reveal and copy flows
+- Command Code quota, usage, and account validation
+- OpenAI-compatible provider pass-through for non-Command-Code models
+- Round-robin credential selection per provider/model
+- Automatic `~/.opencode/opencode.json` setup for the local proxy
+
+## Supported Credential Types
+
+- `api_key`
+- `bearer_token`
+- `oauth_token_bundle`
+
+## Supported Providers
+
+- `commandcode`
+- `openai`
+- `opencode-compatible`
+- `chatgpt`
+- `anthropic`
+- `google-ai`
+- `groq`
+- `openrouter`
+- `nvidia`
+- `other`
 
 ## Quick Start
 
 ```cmd
-set COMMAND_CODE_API_KEY=your_key_here
+set COMMAND_CODE_API_KEY=your_fallback_commandcode_key
 bun run proxy.js
 ```
 
-Proxy runs on `http://localhost:3000`
+Or with Node:
 
-### Web Dashboard
+```cmd
+set COMMAND_CODE_API_KEY=your_fallback_commandcode_key
+node proxy.js
+```
 
-Open your browser to `http://localhost:3000/dashboard` to access the web dashboard where you can:
+Open:
 
-- Manage multiple API keys
-- Enable/disable models
-- Configure proxy settings
-- Monitor proxy health
-- Test connections
+- Dashboard: `http://localhost:3000/dashboard`
+- Health: `http://localhost:3000/health`
 
-## Opencode Integration
+## Local Storage Layout
 
-The proxy automatically creates an opencode configuration file at `%USERPROFILE%\.opencode\opencode.json` when it starts. This configures opencode to use the proxy as a provider.
+The app stores local state under `.config/`:
 
-**To use with opencode:**
+- `config.json`: non-secret metadata only
+- `vault.json`: encrypted secret payloads
+- `.vault-key`: local vault seed used with machine/user-bound derivation
 
-1. Start the proxy
-2. Run `opencode` in your terminal
-3. Run `/connect` and select **Command Code Proxy**
-4. Run `/models` and select a model
+If a legacy config contains plain-text `apiKeys`, startup migrates them into the vault automatically.
 
-The config includes all supported models:
-- DeepSeek V4 Pro
-- DeepSeek V4 Flash
-- MiniMax M2.7
-- Qwen 3.6 Plus
-- GLM 5.1
-- Kimi K2.6
+## Management API
 
-## API Endpoints
+### `GET /api/config`
 
-### Dashboard
+Returns non-secret proxy configuration only.
 
-#### `GET /dashboard`
+### `POST /api/config`
 
-Web-based dashboard for managing API keys and proxy configuration.
+Updates local proxy configuration.
 
-Access at: `http://localhost:3000/dashboard`
+### `GET /api/credentials`
 
-### Management API
+Returns masked credential records:
 
-#### `GET /api/config`
+- `id`
+- `name`
+- `provider`
+- `credentialType`
+- `authType`
+- `baseUrl`
+- `status`
+- `models`
+- `labels`
+- `notes`
+- `maskedValue`
+- `usage`
+- `validation`
+- `expiresAt`
+- `updatedAt`
 
-Get current proxy configuration.
+### `POST /api/credentials`
 
-#### `POST /api/config`
+Creates a credential.
 
-Update proxy configuration.
+For `api_key` or `bearer_token`, send `secretValue`.
 
-#### `GET /api/keys`
+For `oauth_token_bundle`, send:
 
-List all configured API keys.
+- `accessToken`
+- `refreshToken` (optional)
+- `expiresAt` (optional)
 
-#### `POST /api/keys`
+### `PUT /api/credentials`
 
-Add a new API key.
+Updates an existing credential by `id`. Leaving secret fields blank preserves the stored secret.
 
-#### `PUT /api/keys`
+### `DELETE /api/credentials`
 
-Update an existing API key.
+Deletes a credential by `id`.
 
-#### `DELETE /api/keys`
+### `POST /api/credentials/reveal`
 
-Delete an API key.
+Explicitly reveals the stored secret or token bundle for a specific credential.
 
-#### `GET /api/models`
+### `POST /api/credentials/validate`
 
-List all models with enabled status.
+Validates one credential and stores the latest validation summary.
 
-#### `POST /api/models`
+### `POST /api/credentials/validate-all`
 
-Update model enabled status.
+Validates every credential in the vault.
 
-#### `POST /api/restart`
+### Compatibility Endpoints
 
-Initiate proxy restart.
+Legacy `/api/keys`, `/api/keys/quota`, and `/api/keys/validate-all` are still available for compatibility, but they return masked data and map to the new vault model.
 
-### Standard Endpoints
+## Standard Endpoints
 
 ### `GET /health`
 
-Health check with version info.
-
-```json
-{"status":"ok","version":"1.0.0","cli_version":"0.26.24"}
-```
+Returns runtime, config directory, and local-only status.
 
 ### `GET /v1/models`
 
-List available models.
-
-```json
-{
-  "object": "list",
-  "data": [
-    {"id": "deepseek/deepseek-v4-pro", "object": "model", "created": 1234567890, "owned_by": "deepseek"},
-    {"id": "deepseek/deepseek-v4-flash", "object": "model", "created": 1234567890, "owned_by": "deepseek"},
-    ...
-  ]
-}
-```
+Returns enabled models in OpenAI-compatible format.
 
 ### `POST /v1/chat/completions`
 
-Create a chat completion.
+Routes requests using the selected model's provider:
 
-**Non-streaming:**
-```bash
-curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer any-key" \
-  -d '{
-    "model": "deepseek/deepseek-v4-flash",
-    "messages": [{"role": "user", "content": "say hello in 3 words"}]
-  }'
+- Command Code models use the proprietary `/alpha/generate` bridge
+- Other providers use OpenAI-compatible `/chat/completions`
+
+## Security Notes
+
+- Secrets are encrypted at rest before being written to disk
+- Normal read APIs never return raw secret values
+- The server binds to `127.0.0.1` only
+- This is a single-user local tool, not a hosted multi-user secrets service
+- Full machine compromise still compromises local secrets; this is hardening for local-at-rest storage, not an HSM
+
+## Testing
+
+Run the smoke test:
+
+```cmd
+npm test
 ```
 
-**Streaming:**
-```bash
-curl -N -X POST http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer any-key" \
-  -d '{
-    "model": "deepseek/deepseek-v4-flash",
-    "messages": [{"role": "user", "content": "count to 5"}],
-    "stream": true
-  }'
-```
+The test covers:
 
-**With tools:**
-```bash
-curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer any-key" \
-  -d '{
-    "model": "deepseek/deepseek-v4-flash",
-    "messages": [{"role": "user", "content": "what time is it?"}],
-    "tools": [{"type": "function", "function": {"name": "get_time", "parameters": {"type": "object"}}}]
-  }'
-```
-
-## Supported Models
-
-| Model ID | Enabled | Provider |
-|----------|---------|----------|
-| `deepseek/deepseek-v4-pro` | ✅ | DeepSeek |
-| `deepseek/deepseek-v4-flash` | ✅ | DeepSeek |
-| `MiniMaxAI/MiniMax-M2.7` | ✅ | MiniMax |
-| `Qwen/Qwen3.6-Plus` | ✅ | Qwen |
-| `zai-org/GLM-5.1` | ✅ | ZAI |
-| `moonshotai/Kimi-K2.6` | ✅ | Moonshot |
+- health endpoint
+- legacy `apiKeys` migration
+- masked credential reads
+- encrypted vault storage
+- explicit reveal endpoint
+- `/v1/models`
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `COMMAND_CODE_API_KEY` | **required** | Your Command Code API key |
-| `COMMAND_CODE_API_URL` | `https://api.commandcode.ai` | API base URL |
-| `COMMAND_CODE_CLI_VERSION` | `0.26.24` | CLI version header |
-| `PROXY_PORT` | `3000` | Proxy server port |
+| Variable | Default | Purpose |
+|---|---|---|
+| `COMMAND_CODE_API_KEY` | unset | Fallback Command Code key if the vault has none |
+| `COMMAND_CODE_API_URL` | `https://api.commandcode.ai` | Default Command Code upstream |
+| `COMMAND_CODE_CLI_VERSION` | `0.26.24` | Command Code version header |
+| `PROXY_PORT` | `3000` | Local proxy port |
+| `PROXY_CONFIG_DIR` | `.config` | Override config/vault directory |
+| `DISABLE_OPENCODE_CONFIG` | unset | Set to `1` to skip opencode auto-config |
+| `COMMANDCODE_PROXY_MASTER_KEY` | unset | Optional extra secret mixed into vault key derivation |
 
-## Configuration File
+## Known Boundaries
 
-The proxy stores configuration in `proxy-config.json` in the working directory. This includes:
-
-- API keys (multiple keys supported)
-- Model enabled/disabled status
-- Bind host and port settings
-- API URL and CLI version
-
-The web dashboard automatically reads/writes this file.
-
-## Message Format
-
-### Request Conversion (OpenAI → Command Code)
-
-| OpenAI Role | Command Code Role |
-|-------------|------------------|
-| `system` | `system` (extracted to `params.system`) |
-| `user` | `user` with text content |
-| `assistant` | `assistant` with optional `tool_calls` |
-| `tool` | `user` (tool result as plain string) |
-
-### Response Conversion (Command Code → OpenAI)
-
-| Command Code Event | OpenAI Format |
-|--------------------|---------------|
-| `text-delta` | `delta.content` chunk |
-| `tool-input-start/delta/end` | `delta.tool_calls` chunk |
-| `tool-call` | `delta.tool_calls` chunk |
-| `finish` | final chunk with `finish_reason` and `usage` |
-| `error` | error chunk with `finish_reason: 'error'` |
-
-## Tool Calls
-
-The proxy fully supports OpenAI tool-calls:
-
-1. **Tool definitions** → `params.tools` array with `{name, input_schema}`
-2. **Tool call events** → SSE chunks with `delta.tool_calls`
-3. **Tool results** → sent as `user` message with tool result content
-
-## Architecture
-
-```
-OpenAI Client
-     │
-     ▼
-POST /v1/chat/completions
-     │
-     ▼
-Proxy (Bun.serve)
-     │
-     ├── Converts OpenAI → Command Code format
-     │
-     ▼
-POST /alpha/generate (Command Code API)
-     │
-     ▼
-SSE stream parsing
-     │
-     ├── text-delta, tool-call, finish, error events
-     │
-     ▼
-Converts → OpenAI SSE chunks
-     │
-     ▼
-OpenAI Client
-```
-
-## Known Limitations
-
-- `tools` parameter requires proper OpenAI function format
-- `tool_choice` must be `"auto"` or `"none"` (forced tool selection unsupported)
-- `response_format` / `json_schema` not fully implemented
-- `stream_options.include_usage` sends usage in final chunk
-
-## Security
-
-- Never expose this proxy on public internet without auth
-- The proxy injects your `COMMAND_CODE_API_KEY` to upstream calls
-- Use firewall/VPN/Auth for non-localhost deployments
-
-## Credits
-
-**Inspired by [commandcode-bridge](https://github.com/yelixir-dev/commandcode-bridge)** by [yelixir-dev](https://github.com/yelixir-dev).
-
-This implementation is a simplified Bun-based version of the original TypeScript bridge, focused on single-key operation without the multi-key routing infrastructure.
-
-## License
-
-MIT — Use at your own risk.
+- ChatGPT support in this release is **secure token storage**, not a browser OAuth sign-in flow
+- Streaming token usage for some third-party providers is best-effort unless the upstream includes usage chunks
+- Port changes are saved immediately but need a proxy restart to take effect

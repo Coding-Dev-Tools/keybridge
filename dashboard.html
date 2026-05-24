@@ -3,500 +3,829 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Command Code Proxy Dashboard</title>
+  <title>Command Code Vault</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
     :root {
-      --primary-color: #0d6efd;
-      --secondary-color: #6c757d;
-      --success-color: #32CD32;
-      --bs-success: #32CD32;
-      --bs-success-rgb: 50, 205, 50;
-      --danger-color: #dc3545;
-      --lg-text: #ffffff;
-      --lg-red: #fb4268;
-      --lg-grey: #5b5b5b;
+      --bg-top: #10211d;
+      --bg-bottom: #061110;
+      --panel: rgba(8, 21, 19, 0.74);
+      --panel-border: rgba(181, 230, 211, 0.14);
+      --text: #edf8f3;
+      --muted: rgba(237, 248, 243, 0.68);
+      --accent: #a6f2c7;
+      --accent-strong: #48b67d;
+      --warning: #ffd27f;
+      --danger: #ff8a8a;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
     }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
-      padding: 20px 0;
-      overflow-x: visible;
-      background: #0d1117;
-    }
-    .dashboard-container {
-      position: relative;
-      z-index: 10;
-      max-width: 1200px;
-      margin: 0 auto;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(72, 182, 125, 0.22), transparent 26%),
+        radial-gradient(circle at top right, rgba(255, 210, 127, 0.12), transparent 24%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      overflow-x: hidden;
     }
 
-    .card {
-      position: relative;
-      border: none;
-      border-radius: var(--glass-radius, 12px);
-      margin-bottom: 20px;
-      background: transparent !important;
-    }
-
-    .glass-panel {
-      position: absolute;
-      inset: 0;
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      width: 40vw;
+      height: 40vw;
+      border-radius: 999px;
+      filter: blur(80px);
+      opacity: 0.32;
+      pointer-events: none;
       z-index: 0;
-      border-radius: inherit;
-      overflow: hidden;
     }
 
-    .glass-panel::before {
-      content: '';
-      position: absolute;
-      inset: 0;
+    body::before {
+      top: -12vw;
+      left: -12vw;
+      background: rgba(92, 190, 153, 0.18);
+    }
+
+    body::after {
+      right: -10vw;
+      bottom: -12vw;
+      background: rgba(255, 211, 116, 0.10);
+    }
+
+    .shell {
+      position: relative;
       z-index: 1;
-      border-radius: inherit;
-      background-color: rgba(255, 255, 255, 0.08);
-      pointer-events: none;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 28px 16px 48px;
     }
 
-    .glass-panel::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      z-index: 0;
-      border-radius: inherit;
-      pointer-events: none;
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
     }
 
-    .card-content {
-      position: relative;
-      z-index: 3;
-      border-radius: inherit;
-      overflow: hidden;
-      background: rgba(0, 0, 0, 0.1);
+    .hero {
+      padding: 24px;
+      margin-bottom: 18px;
     }
 
-    .card-header {
-      background: rgba(0, 0, 0, 0.2) !important;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-      font-weight: 600;
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(166, 242, 199, 0.10);
+      color: var(--accent);
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-size: 14px;
-      color: white;
-      padding: 1rem 1.25rem;
-      position: relative;
-      z-index: 4;
     }
 
-    .card-body {
-      padding: 0.5rem;
-      position: relative;
-      z-index: 4;
-      backdrop-filter: blur(13px) !important;
-      -webkit-backdrop-filter: blur(13px) !important;
-    }
-
-    .status-indicator {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      display: inline-block;
-      margin-right: 8px;
-    }
-    .status-online { background-color: var(--success-color); box-shadow: 0 0 10px var(--success-color); }
-    .status-offline { background-color: var(--danger-color); box-shadow: 0 0 10px var(--danger-color); }
-    .status-unknown { background-color: var(--secondary-color); }
-
-    .btn-white-bg {
-      background: white;
-      border: 1px solid white;
-      color: #0d1117;
-    }
-    .btn-white-bg:hover {
-      background: rgba(255, 255, 255, 0.85);
-      border-color: white;
-      color: #0d1117;
-    }
-
-    .btn-outline-action {
-      border: 1px solid rgba(255, 255, 255, 0.8);
-      color: white;
-      background: transparent;
-    }
-    .btn-outline-action:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: white;
-      color: white;
-    }
-
-    .stats-card {
-      background: transparent;
-      border-radius: 12px;
-      padding: 0;
-      text-align: center;
-      position: relative;
-      z-index: 10;
-      backdrop-filter: blur(13px);
-      -webkit-backdrop-filter: blur(13px);
-    }
-
-    .stats-value {
-      font-size: 28px;
+    h1 {
+      margin: 14px 0 8px;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 1.02;
       font-weight: 700;
-      color: white;
-    }
-    .stats-label {
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.8);
-      text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: -0.03em;
     }
 
-    .credential-row {
-      background: transparent;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+    .hero-copy {
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 1rem;
+      margin-bottom: 0;
     }
-    .credential-row.expired {
-      opacity: 0.6;
-      background: rgba(220, 53, 69, 0.15);
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #7b8e88;
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
+    }
+
+    .status-dot.online {
+      background: var(--accent);
+    }
+
+    .status-dot.offline {
+      background: var(--danger);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .summary-card {
+      padding: 18px;
+      min-height: 122px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .summary-label {
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.76rem;
+      letter-spacing: 0.12em;
+    }
+
+    .summary-value {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .summary-foot {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(320px, 0.95fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 1.12rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .panel-subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .vault-panel,
+    .side-panel {
+      padding: 20px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)) auto;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .form-control,
+    .form-select,
+    textarea.form-control {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      color: var(--text);
+      padding: 0.72rem 0.9rem;
+    }
+
+    .form-control:focus,
+    .form-select:focus,
+    textarea.form-control:focus {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(166, 242, 199, 0.28);
+      box-shadow: 0 0 0 0.2rem rgba(72, 182, 125, 0.18);
+      color: var(--text);
+    }
+
+    .form-control::placeholder {
+      color: rgba(237, 248, 243, 0.42);
+    }
+
+    .form-label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .form-text,
+    .text-muted {
+      color: var(--muted) !important;
+    }
+
+    .btn-action,
+    .btn-ghost,
+    .btn-danger-soft {
+      border-radius: 14px;
+      border: 1px solid transparent;
+      font-weight: 600;
+      padding: 0.72rem 1rem;
+    }
+
+    .btn-action {
+      background: linear-gradient(135deg, var(--accent) 0%, #71d89d 100%);
+      color: #072118;
+    }
+
+    .btn-action:hover {
+      background: linear-gradient(135deg, #c6f9dd 0%, #8ee0af 100%);
+      color: #072118;
+    }
+
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+    }
+
+    .btn-danger-soft {
+      background: rgba(255, 138, 138, 0.08);
+      border-color: rgba(255, 138, 138, 0.14);
+      color: #ffd1d1;
+    }
+
+    .btn-danger-soft:hover {
+      background: rgba(255, 138, 138, 0.14);
+      color: #fff;
+    }
+
+    .group-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .provider-group {
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .provider-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .provider-name {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .provider-meta {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .credential-card {
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(6, 12, 11, 0.52);
+      margin-bottom: 10px;
+    }
+
+    .credential-card:last-child {
+      margin-bottom: 0;
+    }
+
+    .credential-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .credential-name {
+      margin: 0 0 6px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .credential-secret {
+      font-family: Consolas, "SFMono-Regular", monospace;
+      color: #d7ece2;
+      font-size: 0.94rem;
+      margin-bottom: 8px;
+    }
+
+    .credential-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .badge-soft {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .badge-soft.success {
+      background: rgba(72, 182, 125, 0.14);
+      color: #d6ffe9;
+    }
+
+    .badge-soft.warn {
+      background: rgba(255, 210, 127, 0.12);
+      color: #ffe3a8;
+    }
+
+    .badge-soft.danger {
+      background: rgba(255, 138, 138, 0.12);
+      color: #ffd1d1;
+    }
+
+    .credential-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .credential-stat {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .credential-stat-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .credential-stat-value {
+      font-size: 0.96rem;
+      font-weight: 600;
+    }
+
+    .credential-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .inline-note {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 10px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 18px;
+      color: var(--muted);
+      border: 1px dashed rgba(255, 255, 255, 0.10);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .side-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .list-clean {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .model-row,
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .detail-key {
+      color: var(--muted);
+      font-size: 0.88rem;
     }
 
     .toast-container {
       position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 1050;
-    }
-
-    .form-label {
-      font-weight: 600;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: rgba(255, 255, 255, 0.9);
-      margin-bottom: 6px;
-    }
-    .form-control, .form-select {
-      display: block;
-      width: 100%;
-      background: rgba(255, 255, 255, 0.15);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: white;
-      padding: 0.375rem 0.75rem;
-      font-size: 1rem;
-      border-radius: 0.375rem;
-    }
-    .form-control:focus, .form-select:focus {
-      background: rgba(255, 255, 255, 0.2);
-      border-color: rgba(255, 255, 255, 0.4);
-      color: white;
-      outline: 0;
-      box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-    }
-    .form-control::placeholder {
-      color: rgba(255, 255, 255, 0.6);
-    }
-    .form-text {
-      color: rgba(255, 255, 255, 0.7);
-    }
-
-    .text-muted {
-      color: rgba(255, 255, 255, 0.7) !important;
-    }
-    .bg-light {
-      background: rgba(255, 255, 255, 0.1) !important;
-    }
-    h4, h5, strong, .fw-medium {
-      color: white !important;
-    }
-    small {
-      color: rgba(255, 255, 255, 0.8) !important;
+      top: 18px;
+      right: 18px;
+      z-index: 1100;
     }
 
     .modal-content {
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-      position: relative;
-      z-index: 20;
-      backdrop-filter: blur(30px);
-      -webkit-backdrop-filter: blur(30px);
+      background: rgba(10, 20, 18, 0.96);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 22px;
     }
-    .modal-header, .modal-body, .modal-footer {
-      border-color: rgba(255, 255, 255, 0.2);
+
+    .modal-header,
+    .modal-footer {
+      border-color: rgba(255, 255, 255, 0.08);
     }
-    .modal-title {
-      color: white !important;
-    }
+
     .modal .btn-close {
-      filter: invert(1) grayscale(1) brightness(2);
+      filter: invert(1) grayscale(1);
     }
 
-    .api-key-input {
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
+    .token-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
     }
 
-    .collapsible-header {
-      cursor: pointer;
-      user-select: none;
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
-    .collapsible-header .toggle-icon {
-      transition: transform 0.2s ease;
+
+    .model-check {
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
-    .collapsible-header .toggle-icon.collapsed {
-      transform: rotate(-90deg);
+
+    .hidden {
+      display: none !important;
     }
-    .collapse-section {
-      transition: all 0.3s ease;
+
+    @media (max-width: 1100px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr 1fr;
+      }
     }
-    .collapse-section.collapsed {
-      display: none;
+
+    @media (max-width: 760px) {
+      .summary-grid,
+      .credential-stats,
+      .token-pair,
+      .checkbox-grid,
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .credential-top,
+      .provider-heading,
+      .panel-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .credential-actions {
+        justify-content: stretch;
+      }
+
+      .credential-actions .btn {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
-  <svg style="position:absolute;overflow:hidden;width:0;height:0" color-interpolation-filters="sRGB">
-    <defs id="glass-defs"></defs>
-  </svg>
+  <div class="shell">
+    <section class="panel hero">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-4 align-items-lg-end">
+        <div>
+          <div class="eyebrow">
+            <i class="bi bi-shield-lock"></i>
+            Local-Only Credential Vault
+          </div>
+          <h1>One place for Command Code, OpenAI-style keys, and OAuth tokens.</h1>
+          <p class="hero-copy">
+            This release focuses on hardening first: encrypted local storage, masked reads by default, explicit reveal flows, and a cleaner vault experience for every provider you use.
+          </p>
+        </div>
+        <div class="d-flex flex-column gap-2 align-items-lg-end">
+          <div class="status-pill">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusText">Checking proxy health…</span>
+          </div>
+          <div class="status-pill">
+            <i class="bi bi-hdd-network"></i>
+            <span id="runtimeText">Local runtime</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <div class="dashboard-container">
-    <!-- Header -->
-    <div class="card sticky-top" style="top:10px;z-index:100" data-glass>
-      <div class="glass-panel"></div>
-      <div class="card-content">
+    <section class="summary-grid">
+      <div class="panel summary-card">
+        <div class="summary-label">Credentials</div>
+        <div class="summary-value" id="summaryCredentials">0</div>
+        <div class="summary-foot" id="summaryActive">0 active</div>
+      </div>
+      <div class="panel summary-card">
+        <div class="summary-label">Providers</div>
+        <div class="summary-value" id="summaryProviders">0</div>
+        <div class="summary-foot">Unified storage across vault records</div>
+      </div>
+      <div class="panel summary-card">
+        <div class="summary-label">Models</div>
+        <div class="summary-value" id="summaryModels">0</div>
+        <div class="summary-foot" id="summaryModelsEnabled">0 enabled</div>
+      </div>
+      <div class="panel summary-card">
+        <div class="summary-label">Port</div>
+        <div class="summary-value" id="summaryPort">3000</div>
+        <div class="summary-foot">Bound to localhost only</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="panel vault-panel">
+        <div class="panel-header">
           <div>
-            <div class="d-flex justify-content-between align-items-center">
+            <h2 class="panel-title">Credentials</h2>
+            <p class="panel-subtitle">Secrets stay encrypted at rest and hidden from normal reads. Reveal or copy only when you explicitly ask.</p>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-ghost" onclick="validateAllCredentials()">
+              <i class="bi bi-shield-check me-2"></i>Validate All
+            </button>
+            <button class="btn btn-action" onclick="openCredentialModal()">
+              <i class="bi bi-plus-lg me-2"></i>Add Credential
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <input id="searchInput" class="form-control" type="search" placeholder="Search by name, provider, tag, model" oninput="renderCredentials()">
+          <select id="providerFilter" class="form-select" onchange="renderCredentials()"></select>
+          <select id="typeFilter" class="form-select" onchange="renderCredentials()">
+            <option value="all">All Types</option>
+            <option value="api_key">API Keys</option>
+            <option value="bearer_token">Bearer Tokens</option>
+            <option value="oauth_token_bundle">OAuth Bundles</option>
+          </select>
+          <select id="statusFilter" class="form-select" onchange="renderCredentials()">
+            <option value="all">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <button class="btn btn-ghost" onclick="clearFilters()">
+            <i class="bi bi-x-circle me-2"></i>Clear
+          </button>
+        </div>
+
+        <div id="vaultList" class="group-stack"></div>
+      </div>
+
+      <div class="side-stack">
+        <div class="panel side-panel">
+          <div class="panel-header">
             <div>
-              <h4 class="mb-0"><i class="bi bi-hexagon-fill me-2"></i>Command Code Proxy Dashboard</h4>
-              <small class="text-muted">Manage API keys and monitor proxy status</small>
-            </div>
-            <div class="text-end">
-              <div>
-                <span id="statusIndicator" class="status-indicator status-unknown"></span>
-                <span id="statusText" class="fw-medium">Checking...</span>
-              </div>
-              <div class="proxy-version" id="versionText">v1.0.0</div>
+              <h2 class="panel-title">Quick Actions</h2>
+              <p class="panel-subtitle">A small control center for the local proxy.</p>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stats Row -->
-    <div class="row">
-      <div class="col-md-3 col-sm-6">
-        <div class="stats-card card" data-glass>
-          <div class="glass-panel"></div>
-          <div class="card-content" style="padding: 20px;">
-            <div class="stats-value" id="totalKeys">0</div>
-            <div class="stats-label">Total Keys</div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3 col-sm-6">
-        <div class="stats-card card" data-glass>
-          <div class="glass-panel"></div>
-          <div class="card-content" style="padding: 20px;">
-            <div class="stats-value" id="activeKeys">0</div>
-            <div class="stats-label">Active Keys</div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3 col-sm-6">
-        <div class="stats-card card" data-glass>
-          <div class="glass-panel"></div>
-          <div class="card-content" style="padding: 20px;">
-            <div class="stats-value" id="totalModels">6</div>
-            <div class="stats-label">Models</div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3 col-sm-6">
-        <div class="stats-card card" data-glass>
-          <div class="glass-panel"></div>
-          <div class="card-content" style="padding: 20px;">
-            <div class="stats-value" id="proxyPort">3000</div>
-            <div class="stats-label">Port</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="row">
-      <!-- Left Column -->
-      <div class="col-lg-7">
-        <!-- API Keys Management -->
-        <div class="card" data-glass data-section="keys">
-          <div class="glass-panel"></div>
-          <div class="card-content">
-            <div class="card-header collapsible-header d-flex justify-content-between align-items-center" onclick="toggleSection('keys')">
-              <span>
-                <i class="bi bi-chevron-down toggle-icon me-1"></i>
-                <i class="bi bi-key-fill me-2"></i>API Keys Management
-              </span>
-              <button class="btn btn-sm btn-white-bg" onclick="event.stopPropagation();addApiKey()">
-                <i class="bi bi-plus-lg me-1"></i>Add Key
-              </button>
-            </div>
-            <div class="card-body collapse-section" id="section-keys">
-              <div id="apiKeysContainer"></div>
-            </div>
+          <div class="d-grid gap-2">
+            <button class="btn btn-action" onclick="refreshAll()">
+              <i class="bi bi-arrow-repeat me-2"></i>Refresh Vault
+            </button>
+            <button class="btn btn-ghost" onclick="checkHealth()">
+              <i class="bi bi-heart-pulse me-2"></i>Check Health
+            </button>
+            <button class="btn btn-ghost" onclick="saveConfiguration()">
+              <i class="bi bi-save me-2"></i>Save Proxy Settings
+            </button>
+            <button class="btn btn-ghost" onclick="restartProxy()">
+              <i class="bi bi-arrow-clockwise me-2"></i>Restart Reminder
+            </button>
           </div>
         </div>
 
-        <!-- Proxy Configuration -->
-        <div class="card" data-glass data-section="config">
-          <div class="glass-panel"></div>
-          <div class="card-content">
-            <div class="card-header collapsible-header" onclick="toggleSection('config')">
-              <i class="bi bi-chevron-down toggle-icon collapsed me-1"></i>
-              <i class="bi bi-gear-fill me-2"></i>Proxy Configuration
+        <div class="panel side-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Proxy Settings</h2>
+              <p class="panel-subtitle">Local-only by design. Port and upstream settings live here.</p>
             </div>
-            <div class="card-body collapse-section collapsed" id="section-config">
-              <form id="configForm">
-                <div class="row mb-3">
-                  <div class="col-md-6">
-                    <label class="form-label">Bind Host</label>
-                    <select class="form-select" id="bindHost">
-                      <option value="localhost">localhost (Local Only)</option>
-                      <option value="0.0.0.0">0.0.0.0 (All Interfaces)</option>
-                    </select>
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Port</label>
-                    <input type="number" class="form-control" id="proxyPortInput" min="1024" max="65535" value="3000">
-                  </div>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Command Code API URL</label>
-                  <input type="url" class="form-control" id="apiUrl" value="https://api.commandcode.ai">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">CLI Version</label>
-                  <input type="text" class="form-control" id="cliVersion" value="0.26.24">
-                </div>
-              </form>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Port</label>
+            <input id="proxyPortInput" class="form-control" type="number" min="1024" max="65535">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Command Code API URL</label>
+            <input id="apiUrl" class="form-control" type="url">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">CLI Version</label>
+            <input id="cliVersion" class="form-control" type="text">
+          </div>
+          <div class="inline-note">The proxy always binds to `localhost` for this release.</div>
+        </div>
+
+        <div class="panel side-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Models</h2>
+              <p class="panel-subtitle">Route models to providers and keep the catalog honest.</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="openModelPrompt()">
+              <i class="bi bi-plus-lg me-1"></i>Add
+            </button>
+          </div>
+          <div id="modelsList" class="list-clean"></div>
+        </div>
+
+        <div class="panel side-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Environment</h2>
+              <p class="panel-subtitle">Current runtime context for this local proxy.</p>
+            </div>
+          </div>
+          <div class="list-clean">
+            <div class="detail-row">
+              <span class="detail-key">Runtime</span>
+              <span id="envRuntime">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-key">Platform</span>
+              <span id="envPlatform">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-key">Working Directory</span>
+              <span id="envWorkdir" class="text-end">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-key">Vault Directory</span>
+              <span id="envConfigDir" class="text-end">-</span>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Right Column -->
-      <div class="col-lg-5">
-        <!-- Models Status -->
-        <div class="card" data-glass data-section="models">
-          <div class="glass-panel"></div>
-          <div class="card-content">
-            <div class="card-header collapsible-header" onclick="toggleSection('models')">
-              <i class="bi bi-chevron-down toggle-icon me-1"></i>
-              <i class="bi bi-cpu-fill me-2"></i>Available Models
-            </div>
-            <div class="card-body collapse-section" id="section-models">
-              <div id="modelsContainer"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="card" data-glass data-section="actions">
-          <div class="glass-panel"></div>
-          <div class="card-content">
-            <div class="card-header collapsible-header" onclick="toggleSection('actions')">
-              <i class="bi bi-chevron-down toggle-icon collapsed me-1"></i>
-              <i class="bi bi-lightning-charge-fill me-2"></i>Quick Actions
-            </div>
-            <div class="card-body collapse-section collapsed" id="section-actions">
-              <div class="d-grid gap-2">
-                <button class="btn btn-outline-action" onclick="checkHealth()">
-                  <i class="bi bi-activity me-2"></i>Check Health
-                </button>
-                <button class="btn btn-outline-action" onclick="testConnection()">
-                  <i class="bi bi-wifi me-2"></i>Test Connection
-                </button>
-                <button class="btn btn-outline-action" onclick="validateAllKeys()">
-                  <i class="bi bi-check-circle me-2"></i>Validate All Keys
-                </button>
-                <button class="btn btn-outline-action" onclick="refreshModels()">
-                  <i class="bi bi-arrow-clockwise me-2"></i>Refresh Models
-                </button>
-                <button class="btn btn-white-bg" onclick="saveConfiguration()">
-                  <i class="bi bi-save me-2"></i>Save Configuration
-                </button>
-                <button class="btn btn-outline-action" onclick="restartProxy()">
-                  <i class="bi bi-arrow-counterclockwise me-2"></i>Restart Proxy
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Environment Info -->
-        <div class="card" data-glass data-section="env">
-          <div class="glass-panel"></div>
-          <div class="card-content">
-            <div class="card-header collapsible-header" onclick="toggleSection('env')">
-              <i class="bi bi-chevron-down toggle-icon collapsed me-1"></i>
-              <i class="bi bi-info-circle-fill me-2"></i>Environment
-            </div>
-            <div class="card-body collapse-section collapsed" id="section-env">
-              <div class="mb-2">
-                <small class="text-muted">Working Directory</small>
-                <div class="fw-medium text-truncate" id="workDir">-</div>
-              </div>
-              <div class="mb-2">
-                <small class="text-muted">Platform</small>
-                <div class="fw-medium" id="platform">-</div>
-              </div>
-              <div class="mb-2">
-                <small class="text-muted">Runtime</small>
-                <div class="fw-medium" id="nodeVersion">-</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </section>
   </div>
 
-  <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <!-- Modal for API Key -->
-  <div class="modal fade" id="apiKeyModal" tabindex="-1">
-    <div class="modal-dialog">
+  <div class="modal fade" id="credentialModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Add/Edit API Key</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <div>
+            <h5 class="modal-title" id="credentialModalTitle">Add Credential</h5>
+            <div class="text-muted small">Secret fields stay local to this form and are never loaded in the background.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <form id="apiKeyForm">
-            <input type="hidden" id="editKeyIndex">
-            <div class="mb-3">
-              <label class="form-label">Key Name</label>
-              <input type="text" class="form-control" id="keyName" placeholder="e.g., Primary Key" required>
+          <form id="credentialForm">
+            <input type="hidden" id="credentialId">
+            <div class="row g-3 mb-2">
+              <div class="col-md-6">
+                <label class="form-label">Display Name</label>
+                <input id="credentialName" class="form-control" type="text" placeholder="Primary Command Code key">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Status</label>
+                <select id="credentialStatus" class="form-select">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Provider</label>
+                <select id="credentialProvider" class="form-select" onchange="onProviderChange()"></select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Credential Type</label>
+                <select id="credentialType" class="form-select" onchange="onCredentialTypeChange()">
+                  <option value="api_key">API Key</option>
+                  <option value="bearer_token">Bearer Token</option>
+                  <option value="oauth_token_bundle">OAuth Token Bundle</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Auth Type</label>
+                <select id="credentialAuthType" class="form-select">
+                  <option value="bearer">Bearer</option>
+                  <option value="oauth">OAuth / Bearer</option>
+                  <option value="x-api-key">x-api-key</option>
+                  <option value="x-goog-api-key">x-goog-api-key</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Base URL</label>
+                <input id="credentialBaseUrl" class="form-control" type="text" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="col-12">
+                <label class="form-label">Tags</label>
+                <input id="credentialLabels" class="form-control" type="text" placeholder="team, production, backup">
+              </div>
+              <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea id="credentialNotes" class="form-control" rows="3" placeholder="Optional notes for this vault entry"></textarea>
+              </div>
             </div>
-            <div class="mb-3">
-              <label class="form-label">API Key</label>
-              <input type="text" class="form-control api-key-input" id="keyValue" placeholder="user_..." required>
-              <div class="form-text">Your Command Code API key</div>
+
+            <div id="singleSecretFields">
+              <label class="form-label">Secret Value</label>
+              <input id="credentialSecretValue" class="form-control" type="text" placeholder="Paste the provider secret">
+              <div class="form-text" id="secretHelpText">Leave blank while editing to keep the existing secret.</div>
             </div>
-            <div class="mb-3">
-              <label class="form-label">Status</label>
-              <select class="form-select" id="keyStatus">
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+
+            <div id="oauthFields" class="hidden">
+              <div class="token-pair">
+                <div>
+                  <label class="form-label">Access Token</label>
+                  <input id="credentialAccessToken" class="form-control" type="text" placeholder="Access token">
+                </div>
+                <div>
+                  <label class="form-label">Refresh Token</label>
+                  <input id="credentialRefreshToken" class="form-control" type="text" placeholder="Refresh token (optional)">
+                </div>
+              </div>
+              <div class="mt-3">
+                <label class="form-label">Expires At</label>
+                <input id="credentialExpiresAt" class="form-control" type="datetime-local">
+              </div>
+              <div class="mt-3">
+                <label class="form-label">Monthly Usage Limit</label>
+                <input id="credentialMonthlyLimit" class="form-control" type="number" min="0" placeholder="e.g., 500 (requests/month, 0 = unlimited)">
+                <div class="form-text">Optional cap for automatic rotation balancing. Requests will prefer keys with lower saturation.</div>
+              </div>
+              <div class="form-text">Leave token fields blank while editing to keep the current stored bundle.</div>
+            </div>
+
+            <div class="mt-4">
+              <label class="form-label">Bind to Models</label>
+              <div id="modelCheckboxes" class="checkbox-grid"></div>
+              <div class="form-text">Leave all unchecked to allow this credential for every model owned by its provider.</div>
             </div>
           </form>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline-action" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-white-bg" onclick="saveApiKey()">Save Key</button>
+          <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-action" onclick="saveCredential()">Save Credential</button>
         </div>
       </div>
     </div>
@@ -504,695 +833,658 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    const SURFACE_FNS = {
-      convex_squircle: (x) => Math.pow(1 - Math.pow(1 - x, 4), 0.25),
-    };
+    let config = {};
+    let credentials = [];
+    let models = [];
+    let providers = [];
+    let credentialModal = null;
 
-    function calculateRefractionProfile(glassThickness, bezelWidth, heightFn, ior, samples) {
-      samples = samples || 128;
-      const eta = 1 / ior;
-      function refract(nx, ny) {
-        const dot = ny;
-        const k = 1 - eta * eta * (1 - dot * dot);
-        if (k < 0) return null;
-        const sq = Math.sqrt(k);
-        return [-(eta * dot + sq) * nx, eta - (eta * dot + sq) * ny];
-      }
-      const profile = new Float64Array(samples);
-      for (let i = 0; i < samples; i++) {
-        const x = i / samples;
-        const y = heightFn(x);
-        const dx = x < 1 ? 0.0001 : -0.0001;
-        const y2 = heightFn(x + dx);
-        const deriv = (y2 - y) / dx;
-        const mag = Math.sqrt(deriv * deriv + 1);
-        const ref = refract(-deriv / mag, -1 / mag);
-        if (!ref) { profile[i] = 0; continue; }
-        profile[i] = ref[0] * ((y * bezelWidth + glassThickness) / ref[1]);
-      }
-      return profile;
+    const providerLabels = {};
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      credentialModal = new bootstrap.Modal(document.getElementById('credentialModal'));
+      await refreshAll();
+    });
+
+    async function refreshAll() {
+      await Promise.all([
+        loadProviders(),
+        loadHealth(),
+        loadConfig(),
+        loadCredentials(),
+        loadModels(),
+      ]);
+      updateSummary();
+      renderCredentials();
+      renderModels();
     }
 
-    function generateDisplacementMap(w, h, radius, bezelWidth, profile, maxDisp) {
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      const ctx = c.getContext('2d');
-      const img = ctx.createImageData(w, h);
-      const d = img.data;
-      for (let i = 0; i < d.length; i += 4) {
-        d[i] = 128; d[i+1] = 128; d[i+2] = 0; d[i+3] = 255;
-      }
-      const r = radius, rSq = r*r, r1Sq = (r+1)**2;
-      const rBSq = Math.max(r - bezelWidth, 0)**2;
-      const wB = w - r*2, hB = h - r*2, S = profile.length;
-      for (let y1 = 0; y1 < h; y1++) {
-        for (let x1 = 0; x1 < w; x1++) {
-          const x = x1 < r ? x1 - r : x1 >= w - r ? x1 - r - wB : 0;
-          const y = y1 < r ? y1 - r : y1 >= h - r ? y1 - r - hB : 0;
-          const dSq = x*x + y*y;
-          if (dSq > r1Sq || dSq < rBSq) continue;
-          const dist = Math.sqrt(dSq);
-          const fromSide = r - dist;
-          const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq));
-          if (op <= 0 || dist === 0) continue;
-          const cos = x / dist, sin = y / dist;
-          const bi = Math.min(((fromSide / bezelWidth) * S) | 0, S - 1);
-          const disp = profile[bi] || 0;
-          const dX = (-cos * disp) / maxDisp, dY = (-sin * disp) / maxDisp;
-          const idx = (y1 * w + x1) * 4;
-          d[idx] = (128 + dX * 127 * op + 0.5) | 0;
-          d[idx+1] = (128 + dY * 127 * op + 0.5) | 0;
-        }
-      }
-      ctx.putImageData(img, 0, 0);
-      return c.toDataURL();
+    async function loadProviders() {
+      const response = await fetch('/api/providers');
+      const data = await response.json();
+      providers = data.providers || [];
+      providers.forEach((provider) => {
+        providerLabels[provider.id] = provider.label;
+      });
+      renderProviderSelects();
     }
 
-    function generateSpecularMap(w, h, radius, bezelWidth, angle) {
-      angle = angle != null ? angle : Math.PI / 3;
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      const ctx = c.getContext('2d');
-      const img = ctx.createImageData(w, h);
-      const d = img.data; d.fill(0);
-      const r = radius, rSq = r*r, r1Sq = (r+1)**2;
-      const rBSq = Math.max(r - bezelWidth, 0)**2;
-      const wB = w - r*2, hB = h - r*2;
-      const sv = [Math.cos(angle), Math.sin(angle)];
-      for (let y1 = 0; y1 < h; y1++) {
-        for (let x1 = 0; x1 < w; x1++) {
-          const x = x1 < r ? x1 - r : x1 >= w - r ? x1 - r - wB : 0;
-          const y = y1 < r ? y1 - r : y1 >= h - r ? y1 - r - hB : 0;
-          const dSq = x*x + y*y;
-          if (dSq > r1Sq || dSq < rBSq) continue;
-          const dist = Math.sqrt(dSq);
-          const fromSide = r - dist;
-          const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq));
-          if (op <= 0 || dist === 0) continue;
-          const cos = x / dist, sin = -y / dist;
-          const dot = Math.abs(cos * sv[0] + sin * sv[1]);
-          const edge = Math.sqrt(Math.max(0, 1 - (1 - fromSide)**2));
-          const coeff = dot * edge;
-          const col = (255 * coeff) | 0;
-          const alpha = (col * coeff * op) | 0;
-          const idx = (y1 * w + x1) * 4;
-          d[idx] = col; d[idx+1] = col; d[idx+2] = col; d[idx+3] = alpha;
-        }
+    async function loadHealth(silent = false) {
+      try {
+        const response = await fetch('/health');
+        const data = await response.json();
+        document.getElementById('statusDot').className = 'status-dot online';
+        document.getElementById('statusText').textContent = `Proxy healthy · v${data.version}`;
+        document.getElementById('runtimeText').textContent = data.local_only ? `${data.runtime} · localhost only` : data.runtime;
+        document.getElementById('envRuntime').textContent = data.runtime || '-';
+        document.getElementById('envPlatform').textContent = data.platform || '-';
+        document.getElementById('envWorkdir').textContent = data.cwd || '-';
+        document.getElementById('envConfigDir').textContent = data.config_dir || '-';
+      } catch (error) {
+        document.getElementById('statusDot').className = 'status-dot offline';
+        document.getElementById('statusText').textContent = 'Proxy offline';
+        if (!silent) showToast('Failed to reach the proxy', 'danger');
       }
-      ctx.putImageData(img, 0, 0);
-      return c.toDataURL();
     }
 
-    function initLiquidGlass() {
-      const cards = document.querySelectorAll('[data-glass]');
-      const defs = document.getElementById('glass-defs');
-      let filterIndex = 0;
+    async function loadConfig() {
+      const response = await fetch('/api/config');
+      config = await response.json();
+      document.getElementById('proxyPortInput').value = config.port || 3000;
+      document.getElementById('apiUrl').value = config.apiUrl || 'https://api.commandcode.ai';
+      document.getElementById('cliVersion').value = config.cliVersion || '0.26.24';
+    }
 
-      cards.forEach(card => {
-        requestAnimationFrame(() => {
-          const rect = card.getBoundingClientRect();
-          if (rect.width < 2 || rect.height < 2) return;
-          const w = Math.round(rect.width);
-          const h = Math.round(rect.height);
-          const radius = 12;
-          const bezelW = 30;
-          const glassThick = 60;
-          const ior = 2.5;
-          const blurAmt = 0.3;
-          const specOpacity = 0.5;
-          const specSat = 4;
+    async function loadCredentials() {
+      const response = await fetch('/api/credentials');
+      const data = await response.json();
+      credentials = data.credentials || [];
+    }
 
-          const heightFn = SURFACE_FNS.convex_squircle;
-          const profile = calculateRefractionProfile(glassThick, bezelW, heightFn, ior, 128);
-          const maxDisp = Math.max(...Array.from(profile).map(Math.abs)) || 1;
-          const dispUrl = generateDisplacementMap(w, h, radius, bezelW, profile, maxDisp);
-          const specUrl = generateSpecularMap(w, h, radius, bezelW * 2.5);
-          const scale = maxDisp * 1.0;
+    async function loadModels() {
+      const response = await fetch('/api/models');
+      const data = await response.json();
+      models = data.models || [];
+    }
 
-          const filterId = 'liquid-glass-' + filterIndex++;
-          const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-          filter.setAttribute('id', filterId);
-          filter.setAttribute('x', '0%');
-          filter.setAttribute('y', '0%');
-          filter.setAttribute('width', '100%');
-          filter.setAttribute('height', '100%');
-          filter.innerHTML = `
-            <feGaussianBlur in="SourceGraphic" stdDeviation="${blurAmt}" result="blurred_source" />
-            <feImage href="${dispUrl}" x="0" y="0" width="${w}" height="${h}" result="disp_map" />
-            <feDisplacementMap in="blurred_source" in2="disp_map" scale="${scale}" xChannelSelector="R" yChannelSelector="G" result="displaced" />
-            <feColorMatrix in="displaced" type="saturate" values="${specSat}" result="displaced_sat" />
-            <feImage href="${specUrl}" x="0" y="0" width="${w}" height="${h}" result="spec_layer" />
-            <feComposite in="displaced_sat" in2="spec_layer" operator="in" result="spec_masked" />
-            <feComponentTransfer in="spec_layer" result="spec_faded">
-              <feFuncA type="linear" slope="${specOpacity}" />
-            </feComponentTransfer>
-            <feBlend in="spec_masked" in2="displaced" mode="normal" result="with_sat" />
-            <feBlend in="spec_faded" in2="with_sat" mode="normal" />
-          `;
-          defs.appendChild(filter);
+    function renderProviderSelects() {
+      const providerFilter = document.getElementById('providerFilter');
+      const providerSelect = document.getElementById('credentialProvider');
+      providerFilter.innerHTML = ['<option value="all">All Providers</option>']
+        .concat(providers.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.label)}</option>`))
+        .join('');
+      providerSelect.innerHTML = providers
+        .map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.label)}</option>`)
+        .join('');
+      if (!providerSelect.value && providers[0]) providerSelect.value = providers[0].id;
+      onProviderChange();
+    }
 
-          const panel = card.querySelector('.glass-panel');
-          panel.style.backdropFilter = `url(#${filterId})`;
-          panel.style.webkitBackdropFilter = `url(#${filterId})`;
-        });
+    function updateSummary() {
+      const activeCount = credentials.filter((credential) => credential.status === 'active').length;
+      const providerCount = new Set(credentials.map((credential) => credential.provider)).size;
+      const enabledModels = models.filter((model) => model.enabled !== false).length;
+      document.getElementById('summaryCredentials').textContent = credentials.length;
+      document.getElementById('summaryActive').textContent = `${activeCount} active`;
+      document.getElementById('summaryProviders').textContent = providerCount;
+      document.getElementById('summaryModels').textContent = models.length;
+      document.getElementById('summaryModelsEnabled').textContent = `${enabledModels} enabled`;
+      document.getElementById('summaryPort').textContent = config.port || 3000;
+    }
+
+    function getFilteredCredentials() {
+      const search = document.getElementById('searchInput').value.trim().toLowerCase();
+      const providerFilter = document.getElementById('providerFilter').value;
+      const typeFilter = document.getElementById('typeFilter').value;
+      const statusFilter = document.getElementById('statusFilter').value;
+
+      return credentials.filter((credential) => {
+        if (providerFilter !== 'all' && credential.provider !== providerFilter) return false;
+        if (typeFilter !== 'all' && credential.credentialType !== typeFilter) return false;
+        if (statusFilter !== 'all' && credential.status !== statusFilter) return false;
+
+        if (!search) return true;
+        const haystack = [
+          credential.name,
+          credential.provider,
+          credential.providerLabel,
+          credential.credentialType,
+          credential.baseUrl,
+          (credential.labels || []).join(' '),
+          (credential.models || []).join(' '),
+          credential.notes || '',
+        ].join(' ').toLowerCase();
+        return haystack.includes(search);
       });
     }
 
-    // State
-    let apiKeys = [];
-    let config = {};
-    let models = [
-      { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', enabled: true },
-      { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', enabled: true },
-      { id: 'MiniMaxAI/MiniMax-M2.7', name: 'MiniMax M2.7', enabled: true },
-      { id: 'Qwen/Qwen3.6-Plus', name: 'Qwen 3.6 Plus', enabled: true },
-      { id: 'zai-org/GLM-5.1', name: 'GLM 5.1', enabled: true },
-      { id: 'moonshotai/Kimi-K2.6', name: 'Kimi K2.6', enabled: true }
-    ];
+    function renderCredentials() {
+      const container = document.getElementById('vaultList');
+      const filtered = getFilteredCredentials();
 
-    async function fetchBingWallpaper() {
-      try {
-        const r = await fetch('/api/bg');
-        const data = await r.json();
-        if (data.url) {
-          document.body.style.background = `url("${data.url}") center/cover no-repeat fixed`;
-          document.body.style.backgroundSize = 'cover';
-        }
-      } catch (e) {
-        console.error('Failed to fetch bing wallpaper:', e);
-      }
-    }
-
-    async function fetchBingWallpaper() {
-      try {
-        const r = await fetch('/api/bg');
-        const data = await r.json();
-        if (data.url) {
-          document.body.style.background = `url("${data.url}") center/cover no-repeat fixed`;
-          document.body.style.backgroundSize = 'cover';
-        }
-      } catch (e) {
-        console.error('Failed to fetch bing wallpaper:', e);
-      }
-    }
-
-    const CACHE_KEY = 'cc_proxy_key_cache';
-    function loadKeyCache() {
-      try { const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
-    }
-    function saveKeyCache(keys) {
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(keys)); } catch (e) { console.error('Failed to save key cache', e); }
-    }
-
-    // Initialize
-    document.addEventListener('DOMContentLoaded', () => {
-      initLiquidGlass();
-      loadConfiguration();
-      checkHealth();
-      updateEnvironmentInfo();
-      fetchBingWallpaper();
-      // Ping proxy health every 5s silently
-      setInterval(() => checkHealth(true), 5000);
-    });
-
-    // Toast notifications
-    function showToast(message, type = 'info') {
-      const toast = document.createElement('div');
-      toast.className = `toast align-items-center text-white bg-${type} border-0 show`;
-      toast.innerHTML = `
-        <div class="d-flex">
-          <div class="toast-body">${message}</div>
-          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-        </div>
-      `;
-      document.getElementById('toastContainer').appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
-    }
-
-    // Load configuration
-    async function loadConfiguration() {
-      try {
-        const healthResponse = await fetch('/health');
-        const healthData = await healthResponse.json();
-        config = {
-          status: healthData.status,
-          version: healthData.version,
-          cliVersion: healthData.cli_version
-        };
-        document.getElementById('versionText').textContent = `v${healthData.version}`;
-        document.getElementById('cliVersion').value = healthData.cli_version || '0.26.24';
-        
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
-        if (configData) {
-          config = { ...config, ...configData };
-          document.getElementById('bindHost').value = configData.bindHost || 'localhost';
-          document.getElementById('proxyPortInput').value = configData.port || 3000;
-          document.getElementById('apiUrl').value = configData.apiUrl || 'https://api.commandcode.ai';
-          document.getElementById('cliVersion').value = configData.cliVersion || '0.26.24';
-          if (configData.apiKeys) {
-            apiKeys = configData.apiKeys;
-          }
-          if (configData.models) {
-            models = configData.models;
-          }
-        }
-
-        // Load cached quota data immediately for instant display
-        const cached = loadKeyCache();
-        if (cached && cached.length > 0) {
-          apiKeys = apiKeys.map((k, i) => {
-            const c = cached.find(x => x.value === k.value);
-            return c ? { ...k, quota: c.quota, usage: c.usage, info: c.info, loading: true } : { ...k, loading: true };
-          });
-        } else {
-          apiKeys.forEach(k => k.loading = true);
-        }
-        renderApiKeys();
-        renderModels();
-        updateStats();
-
-        // Background refresh
-        validateAllKeys();
-      } catch (error) {
-        console.error('Failed to load config:', error);
-        showToast('Failed to load configuration', 'danger');
-      }
-    }
-
-    // Render API keys
-    function renderApiKeys() {
-      const container = document.getElementById('apiKeysContainer');
-      if (apiKeys.length === 0) {
+      if (filtered.length === 0) {
         container.innerHTML = `
-          <div class="text-center text-muted py-4">
-            <i class="bi bi-key" style="font-size: 2rem;"></i>
-            <p class="mt-2">No API keys configured</p>
-            <button class="btn btn-sm btn-white-bg" onclick="addApiKey()">Add Your First Key</button>
+          <div class="empty-state">
+            <div class="mb-3"><i class="bi bi-safe2" style="font-size: 2.4rem;"></i></div>
+            <div class="fw-semibold mb-2">No credentials match this view.</div>
+            <div>Start by adding a provider record, or clear the current filters.</div>
           </div>
         `;
         return;
       }
 
-      container.innerHTML = apiKeys.map((key, index) => {
-        let balance = 0;
-        const credits = key.quota?.credits;
-        if (typeof credits === 'number') {
-          balance = credits;
-        } else if (credits && typeof credits === 'object') {
-          balance = Number(credits.monthlyCredits ?? credits.purchasedCredits ?? credits.freeCredits ?? 0);
-        }
-        const pctOf10 = Math.min((balance / 10) * 100, 100).toFixed(1);
-        const quota = key.quota ? `
-          <div class="mt-2 p-2 bg-light rounded">
-            <div class="d-flex justify-content-between align-items-center">
-              <small class="text-muted">
-                <i class="bi bi-wallet2 me-1"></i>
-                Balance: <strong class="text-success">$${balance.toFixed(2)}</strong> <span style="font-size:0.75em;color:rgba(255,255,255,0.5)">(${pctOf10}% of $10)</span>
-              </small>
-              ${key.usage?.valid ? `
-                <small class="text-muted">
-                  <i class="bi bi-graph-up me-1"></i>
-                  ${(key.usage.totalTokens || 0).toLocaleString()} tokens
-                </small>
-              ` : ''}
-              ${key.info ? `
-                <small class="text-muted" title="${escapeHtml(key.info.raw?.user?.email || key.info.email || '')}">
-                  <i class="bi bi-person-circle me-1"></i>
-                  User: ${escapeHtml(key.info.raw?.user?.name || key.info.raw?.user?.userName || key.info.email || 'Unknown')}
-                </small>
-              ` : ''}
-            </div>
-          </div>
-        ` : '';
-        
-        const loading = key.loading ? `
-          <div class="text-center py-2">
-            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
-              <span class="visually-hidden">Loading...</span>
-            </div>
-            <small class="text-muted">Checking...</small>
-          </div>
-        ` : '';
+      const groups = filtered.reduce((accumulator, credential) => {
+        if (!accumulator[credential.provider]) accumulator[credential.provider] = [];
+        accumulator[credential.provider].push(credential);
+        return accumulator;
+      }, {});
 
+      container.innerHTML = Object.entries(groups).map(([providerId, group]) => {
+        const providerLabel = providerLabels[providerId] || providerId;
         return `
-        <div class="credential-row ${key.status === 'inactive' ? 'expired' : ''}">
-          <div class="d-flex justify-content-between align-items-start">
-            <div class="flex-grow-1">
-              <div class="d-flex align-items-center mb-2">
-                <span class="badge ${key.status === 'active' ? 'bg-success' : 'bg-secondary'} me-2">
-                  ${key.status.toUpperCase()}
-                </span>
-                <strong>${escapeHtml(key.name)}</strong>
-                ${key.quota?.valid ? '<i class="bi bi-patch-check-fill text-success ms-2"></i>' : ''}
-                ${key.quota?.error ? '<i class="bi bi-exclamation-triangle-fill text-warning ms-2" title="' + escapeHtml(key.quota.error) + '"></i>' : ''}
+          <section class="provider-group">
+            <div class="provider-heading">
+              <div>
+                <div class="provider-name">${escapeHtml(providerLabel)}</div>
+                <div class="provider-meta">${group.length} credential${group.length === 1 ? '' : 's'} in this vault group</div>
               </div>
-              <div class="font-monospace text-muted small">
-                ${maskKey(key.value)}
-              </div>
-              ${loading}
-              ${quota}
+              <span class="badge-soft">${escapeHtml(providerId)}</span>
             </div>
-            <div>
-              <button class="btn btn-sm btn-outline-action me-1 mb-1" onclick="checkKeyQuota(${index})" title="Check Quota">
-                <i class="bi bi-arrow-clockwise"></i>
-              </button>
-              <button class="btn btn-sm btn-outline-action me-1 mb-1" onclick="editApiKey(${index})">
-                <i class="bi bi-pencil"></i>
-              </button>
-              <button class="btn btn-sm btn-outline-action mb-1" onclick="deleteApiKey(${index})">
-                <i class="bi bi-trash"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
+            ${group.map(renderCredentialCard).join('')}
+          </section>
+        `;
       }).join('');
-      
-      updateStats();
     }
 
-    // Render models
-    function renderModels() {
-      const container = document.getElementById('modelsContainer');
-      container.innerHTML = models.map(model => `
-        <div class="d-flex justify-content-between align-items-center mb-2 p-2 rounded ${model.enabled ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'}">
-          <div>
-            <span class="fw-medium">${escapeHtml(model.name)}</span>
-            <div class="small text-muted">${escapeHtml(model.id)}</div>
+    function renderCredentialCard(credential) {
+      const validationBadge = getValidationBadge(credential.validation);
+      const usage = credential.usage || {};
+      const quotaText = credential.validation?.quota?.credits
+        ? renderCredits(credential.validation.quota.credits)
+        : credential.validation?.account?.userName || 'Not checked';
+      const modelText = credential.models && credential.models.length > 0
+        ? credential.models.join(', ')
+        : 'All provider models';
+      const updatedText = credential.updatedAt ? timeAgo(credential.updatedAt) : 'just now';
+      const revealLabel = credential.credentialType === 'oauth_token_bundle' ? 'Reveal tokens' : 'Reveal secret';
+
+      return `
+        <article class="credential-card">
+          <div class="credential-top">
+            <div class="flex-grow-1">
+              <h3 class="credential-name">${escapeHtml(credential.name)}</h3>
+              <div class="credential-secret">${escapeHtml(credential.maskedValue || 'No secret stored')}</div>
+              <div class="credential-meta">
+                <span class="badge-soft ${credential.status === 'active' ? 'success' : 'warn'}">${escapeHtml(credential.status)}</span>
+                <span class="badge-soft">${escapeHtml(formatCredentialType(credential.credentialType))}</span>
+                <span class="badge-soft">${escapeHtml(credential.authType || 'bearer')}</span>
+                ${validationBadge}
+              </div>
+              <div class="text-muted small">
+                ${credential.baseUrl ? `${escapeHtml(credential.baseUrl)} · ` : ''}
+                ${escapeHtml(modelText)}
+              </div>
+              ${(credential.labels || []).length > 0 ? `<div class="inline-note">Tags: ${escapeHtml(credential.labels.join(', '))}</div>` : ''}
+              ${credential.notes ? `<div class="inline-note">${escapeHtml(credential.notes)}</div>` : ''}
+            </div>
+            <div class="credential-actions">
+              <button class="btn btn-ghost btn-sm" onclick="validateCredential('${escapeJs(credential.id)}')">
+                <i class="bi bi-shield-check me-1"></i>Validate
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="revealCredential('${escapeJs(credential.id)}')">
+                <i class="bi bi-eye me-1"></i>${revealLabel}
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="copyCredential('${escapeJs(credential.id)}')">
+                <i class="bi bi-clipboard me-1"></i>Copy
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="openCredentialModal('${escapeJs(credential.id)}')">
+                <i class="bi bi-pencil me-1"></i>Edit
+              </button>
+              <button class="btn btn-danger-soft btn-sm" onclick="deleteCredential('${escapeJs(credential.id)}')">
+                <i class="bi bi-trash me-1"></i>Delete
+              </button>
+            </div>
           </div>
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" 
-                   ${model.enabled ? 'checked' : ''} 
-                   onchange="toggleModel('${escapeHtml(model.id)}')">
+
+          <div class="credential-stats">
+            <div class="credential-stat">
+              <div class="credential-stat-label">Usage</div>
+              <div class="credential-stat-value">${(usage.requestCount || 0).toLocaleString()} req</div>
+            </div>
+            <div class="credential-stat">
+              <div class="credential-stat-label">Token Volume</div>
+              <div class="credential-stat-value">${(usage.totalTokens || 0).toLocaleString()}</div>
+            </div>
+            <div class="credential-stat">
+              <div class="credential-stat-label">${credential.monthlyLimit ? 'Saturation' : 'Account / Quota'}</div>
+              <div class="credential-stat-value">${credential.monthlyLimit ? saturationBar(usage.requestCount||0, credential.monthlyLimit) : escapeHtml(quotaText)}</div>
+            </div>
+          </div>
+
+          <div class="inline-note">
+            Last updated ${escapeHtml(updatedText)}
+            ${credential.lastValidatedAt ? ` · validated ${escapeHtml(timeAgo(credential.lastValidatedAt))}` : ''}
+            ${usage.lastUsed ? ` · used ${escapeHtml(timeAgo(usage.lastUsed))}` : ''}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderModels() {
+      const container = document.getElementById('modelsList');
+      if (models.length === 0) {
+        container.innerHTML = '<div class="empty-state p-4">No models configured yet.</div>';
+        return;
+      }
+
+      container.innerHTML = models.map((model, index) => `
+        <div class="model-row">
+          <div>
+            <div class="fw-semibold">${escapeHtml(model.name)}</div>
+            <div class="text-muted small">${escapeHtml(model.id)} · ${escapeHtml(model.provider || 'commandcode')}</div>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input" type="checkbox" ${model.enabled !== false ? 'checked' : ''} onchange="toggleModel('${escapeJs(model.id)}')">
+            </div>
+            <button class="btn btn-danger-soft btn-sm" onclick="removeModel(${index})">
+              <i class="bi bi-x-lg"></i>
+            </button>
           </div>
         </div>
       `).join('');
     }
 
-    // Add API key
-    function addApiKey() {
-      document.getElementById('editKeyIndex').value = '-1';
-      document.getElementById('keyName').value = '';
-      document.getElementById('keyValue').value = '';
-      document.getElementById('keyStatus').value = 'active';
-      new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+    function buildModelCheckboxes(selectedModels = []) {
+      const container = document.getElementById('modelCheckboxes');
+      container.innerHTML = models.map((model) => `
+        <label class="model-check">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" value="${escapeHtml(model.id)}" ${selectedModels.includes(model.id) ? 'checked' : ''}>
+            <span class="ms-2 fw-semibold">${escapeHtml(model.name)}</span>
+          </div>
+          <div class="text-muted small mt-1">${escapeHtml(model.id)} · ${escapeHtml(model.provider || 'commandcode')}</div>
+        </label>
+      `).join('');
     }
 
-    // Edit API key
-    function editApiKey(index) {
-      const key = apiKeys[index];
-      document.getElementById('editKeyIndex').value = index;
-      document.getElementById('keyName').value = key.name;
-      document.getElementById('keyValue').value = key.value;
-      document.getElementById('keyStatus').value = key.status;
-      new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+    function getSelectedModels() {
+      return Array.from(document.querySelectorAll('#modelCheckboxes input:checked')).map((input) => input.value);
     }
 
-    // Save API key
-    async function saveApiKey() {
-      const index = parseInt(document.getElementById('editKeyIndex').value);
-      const name = document.getElementById('keyName').value.trim();
-      const value = document.getElementById('keyValue').value.trim();
-      const status = document.getElementById('keyStatus').value;
+    function openCredentialModal(credentialId = null) {
+      resetCredentialForm();
+      if (credentialId) {
+        const credential = credentials.find((item) => item.id === credentialId);
+        if (!credential) return;
+        document.getElementById('credentialModalTitle').textContent = 'Edit Credential';
+        document.getElementById('credentialId').value = credential.id;
+        document.getElementById('credentialName').value = credential.name;
+        document.getElementById('credentialStatus').value = credential.status;
+        document.getElementById('credentialProvider').value = credential.provider;
+        document.getElementById('credentialType').value = credential.credentialType;
+        document.getElementById('credentialAuthType').value = credential.authType || 'bearer';
+        document.getElementById('credentialBaseUrl').value = credential.baseUrl || '';
+        document.getElementById('credentialLabels').value = (credential.labels || []).join(', ');
+        document.getElementById('credentialNotes').value = credential.notes || '';
+        if (credential.expiresAt) {
+          document.getElementById('credentialExpiresAt').value = toLocalDateTime(credential.expiresAt);
+        }
+        document.getElementById('credentialMonthlyLimit').value = credential.monthlyLimit || '';
+        buildModelCheckboxes(credential.models || []);
+      } else {
+        document.getElementById('credentialModalTitle').textContent = 'Add Credential';
+      }
+      onProviderChange();
+      onCredentialTypeChange();
+      credentialModal.show();
+    }
 
-      if (!name || !value) {
-        showToast('Please fill in all fields', 'warning');
-        return;
+    function resetCredentialForm() {
+      document.getElementById('credentialForm').reset();
+      document.getElementById('credentialId').value = '';
+      document.getElementById('credentialStatus').value = 'active';
+      if (providers[0]) document.getElementById('credentialProvider').value = providers[0].id;
+      document.getElementById('credentialType').value = 'api_key';
+      document.getElementById('credentialAuthType').value = 'bearer';
+      document.getElementById('credentialBaseUrl').value = '';
+      document.getElementById('credentialSecretValue').value = '';
+      document.getElementById('credentialAccessToken').value = '';
+      document.getElementById('credentialRefreshToken').value = '';
+      document.getElementById('credentialExpiresAt').value = '';
+      document.getElementById('credentialMonthlyLimit').value = '';
+      buildModelCheckboxes([]);
+    }
+
+    function onProviderChange() {
+      const providerId = document.getElementById('credentialProvider').value;
+      const provider = providers.find((item) => item.id === providerId);
+      if (!provider) return;
+      const credentialTypeEl = document.getElementById('credentialType');
+      const authTypeEl = document.getElementById('credentialAuthType');
+      const baseUrlEl = document.getElementById('credentialBaseUrl');
+
+      if (!document.getElementById('credentialId').value && provider.baseUrl) {
+        baseUrlEl.value = provider.baseUrl;
+      }
+
+      if (provider.id === 'chatgpt') {
+        credentialTypeEl.value = 'oauth_token_bundle';
+      }
+
+      authTypeEl.value = provider.authType || authTypeEl.value || 'bearer';
+      onCredentialTypeChange();
+    }
+
+    function onCredentialTypeChange() {
+      const credentialType = document.getElementById('credentialType').value;
+      const singleSecret = document.getElementById('singleSecretFields');
+      const oauthFields = document.getElementById('oauthFields');
+      const authTypeEl = document.getElementById('credentialAuthType');
+
+      if (credentialType === 'oauth_token_bundle') {
+        singleSecret.classList.add('hidden');
+        oauthFields.classList.remove('hidden');
+        authTypeEl.value = 'oauth';
+      } else {
+        oauthFields.classList.add('hidden');
+        singleSecret.classList.remove('hidden');
+        if (authTypeEl.value === 'oauth') authTypeEl.value = credentialType === 'api_key' ? 'x-api-key' : 'bearer';
+      }
+    }
+
+    async function saveCredential() {
+      const id = document.getElementById('credentialId').value;
+      const payload = {
+        id: id || undefined,
+        name: document.getElementById('credentialName').value.trim(),
+        provider: document.getElementById('credentialProvider').value,
+        credentialType: document.getElementById('credentialType').value,
+        authType: document.getElementById('credentialAuthType').value,
+        baseUrl: document.getElementById('credentialBaseUrl').value.trim(),
+        status: document.getElementById('credentialStatus').value,
+        labels: document.getElementById('credentialLabels').value.split(',').map((item) => item.trim()).filter(Boolean),
+        notes: document.getElementById('credentialNotes').value.trim(),
+        models: getSelectedModels(),
+      };
+
+      if (document.getElementById('credentialExpiresAt').value) {
+        payload.expiresAt = new Date(document.getElementById('credentialExpiresAt').value).toISOString();
+      }
+      const monthlyLimit = Number(document.getElementById('credentialMonthlyLimit').value);
+      if (monthlyLimit > 0) payload.monthlyLimit = monthlyLimit;
+
+      if (payload.credentialType === 'oauth_token_bundle') {
+        payload.accessToken = document.getElementById('credentialAccessToken').value.trim();
+        payload.refreshToken = document.getElementById('credentialRefreshToken').value.trim();
+      } else {
+        payload.secretValue = document.getElementById('credentialSecretValue').value.trim();
       }
 
       try {
-        if (index === -1) {
-          const response = await fetch('/api/keys', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, value, status })
-          });
-          const data = await response.json();
-          if (data.success) {
-            apiKeys = data.keys;
-            showToast('API key added successfully', 'success');
-          }
-        } else {
-          const response = await fetch('/api/keys', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ index, name, value, status })
-          });
-          const data = await response.json();
-          if (data.success) {
-            apiKeys = data.keys;
-            showToast('API key updated successfully', 'success');
-          }
+        const response = await fetch('/api/credentials', {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error?.message || 'Unable to save credential');
         }
-        bootstrap.Modal.getInstance(document.getElementById('apiKeyModal')).hide();
-        renderApiKeys();
+        await loadCredentials();
+        updateSummary();
+        renderCredentials();
+        credentialModal.hide();
+        showToast(id ? 'Credential updated' : 'Credential added', 'success');
       } catch (error) {
-        showToast('Failed to save API key: ' + error.message, 'danger');
+        showToast(error.message, 'danger');
       }
     }
 
-    // Delete API key
-    async function deleteApiKey(index) {
-      if (confirm('Are you sure you want to delete this API key?')) {
-        try {
-          const response = await fetch('/api/keys', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ index })
-          });
-          const data = await response.json();
-          if (data.success) {
-            apiKeys = data.keys;
-            showToast('API key deleted', 'info');
-            renderApiKeys();
-          }
-        } catch (error) {
-          showToast('Failed to delete key: ' + error.message, 'danger');
-        }
-      }
-    }
-
-    // Toggle model
-    async function toggleModel(modelId) {
-      const model = models.find(m => m.id === modelId);
-      if (model) {
-        model.enabled = !model.enabled;
-        renderModels();
-        updateStats();
-        try {
-          await fetch('/api/models', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ models })
-          });
-          showToast(`${model.name} ${model.enabled ? 'enabled' : 'disabled'}`, 'info');
-        } catch (error) {
-          model.enabled = !model.enabled;
-          renderModels();
-          updateStats();
-          showToast('Failed to update model', 'danger');
-        }
-      }
-    }
-
-    // Check key quota
-    async function checkKeyQuota(index) {
-      const key = apiKeys[index];
-      key.loading = true;
-      renderApiKeys();
-      
+    async function deleteCredential(id) {
+      const credential = credentials.find((item) => item.id === id);
+      if (!credential) return;
+      if (!confirm(`Delete "${credential.name}" from the vault?`)) return;
       try {
-        const response = await fetch('/api/keys/quota', {
+        const response = await fetch('/api/credentials', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to delete credential');
+        await loadCredentials();
+        updateSummary();
+        renderCredentials();
+        showToast('Credential deleted', 'info');
+      } catch (error) {
+        showToast(error.message, 'danger');
+      }
+    }
+
+    async function validateCredential(id) {
+      try {
+        const response = await fetch('/api/credentials/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ index })
+          body: JSON.stringify({ id }),
         });
         const data = await response.json();
-        
-        if (data.success) {
-          apiKeys[index].quota = data.quota;
-          apiKeys[index].usage = data.usage;
-          apiKeys[index].info = data.info;
-          showToast('Quota updated', 'success');
-        } else {
-          showToast('Failed to check quota: ' + data.error, 'warning');
-        }
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Validation failed');
+        await loadCredentials();
+        renderCredentials();
+        showToast('Credential validated', data.validation?.valid ? 'success' : 'warning');
       } catch (error) {
-        showToast('Failed to check quota: ' + error.message, 'danger');
-      } finally {
-        apiKeys[index].loading = false;
-        renderApiKeys();
+        showToast(error.message, 'danger');
       }
     }
 
-    // Validate all keys
-    async function validateAllKeys() {
-      showToast('Checking all API keys...', 'info');
-      
-      // Mark all keys as loading
-      apiKeys.forEach(k => k.loading = true);
-      renderApiKeys();
-      
+    async function validateAllCredentials() {
       try {
-        const response = await fetch('/api/keys/validate-all', {
+        const response = await fetch('/api/credentials/validate-all', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Validation failed');
+        credentials = data.credentials || credentials;
+        updateSummary();
+        renderCredentials();
+        showToast(`Validated ${data.results?.length || 0} credential${data.results?.length === 1 ? '' : 's'}`, 'success');
+      } catch (error) {
+        showToast(error.message, 'danger');
+      }
+    }
+
+    async function revealCredential(id) {
+      try {
+        const response = await fetch('/api/credentials/reveal', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
         });
         const data = await response.json();
-        
-        if (data.success) {
-          data.results.forEach(result => {
-            const index = result.index;
-            if (apiKeys[index]) {
-              apiKeys[index].quota = result.quota;
-              apiKeys[index].usage = result.usage;
-              apiKeys[index].info = result.info;
-            }
-          });
-          saveKeyCache(apiKeys.map(k => ({ value: k.value, quota: k.quota, usage: k.usage, info: k.info })));
-          renderApiKeys();
-          showToast(`Validated ${data.results.length} keys`, 'success');
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to reveal credential');
+        if (data.credentialType === 'oauth_token_bundle') {
+          alert(`Access Token:\n${data.accessToken || '(none)'}\n\nRefresh Token:\n${data.refreshToken || '(none)'}`);
+        } else {
+          alert(data.secretValue || '(empty secret)');
         }
       } catch (error) {
-        showToast('Failed to validate keys: ' + error.message, 'danger');
-      } finally {
-        apiKeys.forEach(k => k.loading = false);
-        renderApiKeys();
+        showToast(error.message, 'danger');
       }
     }
 
-    // Check health
-    async function checkHealth(silent = false) {
+    async function copyCredential(id) {
       try {
-        const response = await fetch('/health');
+        const response = await fetch('/api/credentials/reveal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
         const data = await response.json();
-        
-        if (data.status === 'ok') {
-          document.getElementById('statusIndicator').className = 'status-indicator status-online';
-          document.getElementById('statusText').textContent = 'Online';
-          if (!silent) showToast('Proxy is healthy', 'success');
-        } else {
-          throw new Error('Unhealthy status');
-        }
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to copy credential');
+        const value = data.credentialType === 'oauth_token_bundle' ? (data.accessToken || '') : (data.secretValue || '');
+        await navigator.clipboard.writeText(value);
+        showToast('Credential copied to clipboard', 'success');
       } catch (error) {
-        document.getElementById('statusIndicator').className = 'status-indicator status-offline';
-        document.getElementById('statusText').textContent = 'Offline';
-        if (!silent) showToast('Proxy health check failed', 'danger');
+        showToast(error.message, 'danger');
       }
     }
 
-    // Test connection
-    async function testConnection() {
-      try {
-        const response = await fetch('/v1/models');
-        if (response.ok) {
-          const data = await response.json();
-          showToast(`Connected! ${data.data?.length || 0} models available`, 'success');
-        } else {
-          throw new Error('Connection failed');
-        }
-      } catch (error) {
-        showToast('Connection test failed', 'danger');
-      }
-    }
-
-    // Refresh models
-    function refreshModels() {
-      renderModels();
-      showToast('Models refreshed', 'info');
-    }
-
-    // Save configuration
     async function saveConfiguration() {
-      const newConfig = {
-        bindHost: document.getElementById('bindHost').value,
-        port: parseInt(document.getElementById('proxyPortInput').value),
-        apiUrl: document.getElementById('apiUrl').value,
-        cliVersion: document.getElementById('cliVersion').value,
-        apiKeys: apiKeys,
-        models: models
-      };
-      
       try {
         const response = await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newConfig)
+          body: JSON.stringify({
+            port: Number(document.getElementById('proxyPortInput').value),
+            apiUrl: document.getElementById('apiUrl').value.trim(),
+            cliVersion: document.getElementById('cliVersion').value.trim(),
+          }),
         });
         const data = await response.json();
-        if (data.success) {
-          showToast('Configuration saved successfully', 'success');
-          config = data.config;
-        } else {
-          showToast('Failed to save: ' + data.error, 'danger');
-        }
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to save configuration');
+        config = data.config || config;
+        updateSummary();
+        showToast(data.restartRequired ? 'Configuration saved. Restart to apply the new port.' : 'Configuration saved', 'success');
       } catch (error) {
-        showToast('Failed to save configuration', 'danger');
+        showToast(error.message, 'danger');
       }
     }
 
-    // Restart proxy
     async function restartProxy() {
-      if (confirm('Restart the proxy? This may interrupt active requests.')) {
-        try {
-          const response = await fetch('/api/restart', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          const data = await response.json();
-          if (data.success) {
-            showToast('Restart initiated successfully', 'success');
-            setTimeout(() => checkHealth(), 3000);
-          }
-        } catch (error) {
-          showToast('Restart failed: ' + error.message, 'danger');
-        }
-      }
-    }
-
-    // Update stats
-    function updateStats() {
-      document.getElementById('totalKeys').textContent = apiKeys.length;
-      document.getElementById('activeKeys').textContent = apiKeys.filter(k => k.status === 'active').length;
-      document.getElementById('totalModels').textContent = models.filter(m => m.enabled).length;
-    }
-
-    // Update environment info
-    async function updateEnvironmentInfo() {
       try {
-        const r = await fetch('/health');
-        const data = await r.json();
-        document.getElementById('workDir').textContent = data.cwd || '-';
-        document.getElementById('platform').textContent = data.platform || '-';
-        document.getElementById('nodeVersion').textContent = data.runtime || '-';
-      } catch (e) {
-        document.getElementById('workDir').textContent = '-';
-        document.getElementById('platform').textContent = '-';
-        document.getElementById('nodeVersion').textContent = '-';
+        const response = await fetch('/api/restart', { method: 'POST' });
+        const data = await response.json();
+        showToast(data.message || 'Restart the local proxy process to apply saved changes.', 'info');
+      } catch (error) {
+        showToast('Restart reminder unavailable', 'warning');
       }
     }
 
-    // Toggle collapsible sections
-    function toggleSection(name) {
-      const body = document.getElementById('section-' + name);
-      const card = body.closest('[data-section]');
-      const icon = card.querySelector('.toggle-icon');
-      body.classList.toggle('collapsed');
-      icon.classList.toggle('collapsed');
-      setTimeout(() => initLiquidGlass(), 50);
+    async function openModelPrompt() {
+      const name = prompt('Model display name');
+      if (!name) return;
+      const id = prompt('Model ID');
+      if (!id) return;
+      const provider = prompt('Provider ID', 'openai');
+      if (!provider) return;
+      models.push({ id, name, provider, enabled: true });
+      await persistModels();
     }
 
-    // Utility functions
-    function maskKey(key) {
-      if (!key || key.length < 20) return '****';
-      return `${key.substring(0, 10)}...${key.substring(key.length - 8)}`;
+    async function toggleModel(modelId) {
+      const model = models.find((item) => item.id === modelId);
+      if (!model) return;
+      model.enabled = !model.enabled;
+      await persistModels();
     }
 
-    function escapeHtml(text) {
+    async function removeModel(index) {
+      if (!confirm(`Remove model "${models[index].name}"?`)) return;
+      models.splice(index, 1);
+      await persistModels();
+    }
+
+    async function persistModels() {
+      try {
+        const response = await fetch('/api/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ models }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to save models');
+        models = data.models || models;
+        buildModelCheckboxes(getSelectedModels());
+        renderModels();
+        updateSummary();
+        showToast('Model catalog updated', 'success');
+      } catch (error) {
+        showToast(error.message, 'danger');
+      }
+    }
+
+    function clearFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('providerFilter').value = 'all';
+      document.getElementById('typeFilter').value = 'all';
+      document.getElementById('statusFilter').value = 'all';
+      renderCredentials();
+    }
+
+    function getValidationBadge(validation) {
+      if (!validation) return '<span class="badge-soft">Not validated</span>';
+      if (validation.valid) return '<span class="badge-soft success"><i class="bi bi-check2-circle"></i>Healthy</span>';
+      return `<span class="badge-soft danger" title="${escapeHtml(validation.error || 'Validation failed')}"><i class="bi bi-exclamation-circle"></i>Needs attention</span>`;
+    }
+
+    function renderCredits(credits) {
+      if (typeof credits === 'number') return `$${credits.toFixed(2)}`;
+      if (credits && typeof credits === 'object') {
+        const value = Number(credits.monthlyCredits ?? credits.purchasedCredits ?? credits.freeCredits ?? 0);
+        return `$${value.toFixed(2)}`;
+      }
+      return 'Not checked';
+    }
+
+    function saturationBar(used, limit) {
+      const pct = Math.min((used / limit) * 100, 100);
+      const color = pct > 80 ? 'var(--danger)' : pct > 50 ? 'var(--warning)' : 'var(--accent-strong)';
+      return `${used}/${limit} <span style="display:inline-block;width:60px;height:6px;border-radius:3px;background:rgba(255,255,255,0.08);vertical-align:middle;margin-left:4px"><span style="display:block;height:100%;border-radius:3px;background:${color};width:${pct}%"></span></span>`;
+    }
+
+    function formatCredentialType(type) {
+      if (type === 'api_key') return 'API Key';
+      if (type === 'bearer_token') return 'Bearer Token';
+      if (type === 'oauth_token_bundle') return 'OAuth Bundle';
+      return type;
+    }
+
+    function timeAgo(dateString) {
+      const date = new Date(dateString);
+      const diff = Date.now() - date.getTime();
+      if (Number.isNaN(diff)) return 'unknown';
+      const seconds = Math.floor(diff / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 30) return `${days}d ago`;
+      const months = Math.floor(days / 30);
+      if (months < 12) return `${months}mo ago`;
+      return `${Math.floor(months / 12)}y ago`;
+    }
+
+    function toLocalDateTime(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      const offset = date.getTimezoneOffset();
+      const local = new Date(date.getTime() - offset * 60000);
+      return local.toISOString().slice(0, 16);
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-white bg-${type} border-0 show`;
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${escapeHtml(message)}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+      document.getElementById('toastContainer').appendChild(toast);
+      setTimeout(() => toast.remove(), 3200);
+    }
+
+    function escapeHtml(value) {
       const div = document.createElement('div');
-      div.textContent = text;
+      div.textContent = value == null ? '' : String(value);
       return div.innerHTML;
+    }
+
+    function escapeJs(value) {
+      return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
   </script>
 </body>

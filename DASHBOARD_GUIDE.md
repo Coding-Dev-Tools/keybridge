@@ -1,192 +1,71 @@
-# Dashboard Quick Start Guide
+# Dashboard Guide
 
-## Access the Dashboard
+The dashboard is now a **local credential vault UI**, not just a Command Code key table.
 
-Open your browser to:
-```
-http://localhost:3000/dashboard
-```
+Open it at:
 
-## Features
+`http://localhost:3000/dashboard`
 
-### 1. API Keys Management
+## What You Can Do
 
-**Add a new API key:**
-1. Click the "Add Key" button in the API Keys card
-2. Enter key name (e.g., "Primary Key")
-3. Paste your Command Code API key (starts with `user_`)
-4. Set status to Active/Inactive
-5. Click "Save Key"
+- Add Command Code keys, OpenAI-compatible keys, bearer tokens, and OAuth bundles
+- Group everything in one unified vault view
+- Filter by provider, credential type, and status
+- Validate one credential or the entire vault
+- Reveal or copy a secret only when you explicitly ask
+- Manage model routing and local proxy settings
 
-**Edit an existing key:**
-1. Click the pencil icon on the key row
-2. Modify name, value, or status
-3. Click "Save Key"
+## Adding A Credential
 
-**Delete a key:**
-1. Click the trash icon
-2. Confirm deletion
+1. Click **Add Credential**
+2. Choose a provider
+3. Choose a credential type
+4. Fill in the secret fields for that type
+5. Optionally bind the credential to specific models
+6. Save
 
-### 2. Models Configuration
+## Editing A Credential
 
-Toggle models on/off using the switch next to each model:
-- DeepSeek V4 Pro
-- DeepSeek V4 Flash
-- MiniMax M2.7
-- Qwen 3.6 Plus
-- GLM 5.1
-- Kimi K2.6
+- Open **Edit**
+- Update metadata freely
+- Leave secret fields blank to keep the current stored secret
 
-Changes are saved automatically.
+## Validation
 
-### 3. Proxy Configuration
+- **Command Code** credentials show quota, usage, and account info when validation succeeds
+- **Other providers** validate against the credential's configured `baseUrl` and `authType`
+- Validation summaries are stored as non-secret metadata for quick display
 
-Configure these settings:
-- **Bind Host**: `localhost` (local only) or `0.0.0.0` (all interfaces)
-- **Port**: Default is 3000
-- **API URL**: Command Code API endpoint
-- **CLI Version**: Version header (default: 0.26.24)
+## Secret Safety
 
-Click "Save Configuration" to persist changes.
+- Normal dashboard loads never fetch raw secrets
+- The browser no longer caches secrets in `localStorage`
+- **Reveal** and **Copy** use an explicit request to the server
 
-### 4. Quick Actions
+## Model Routing
 
-- **Check Health**: Verify proxy is running
-- **Test Connection**: Test upstream API connection
-- **Refresh Models**: Reload model list
-- **Save Configuration**: Save all changes
-- **Restart Proxy**: Restart the proxy server
+- Every model belongs to a provider
+- Credentials can optionally bind themselves to a subset of models
+- If no model binding is selected, the credential can serve all models for its provider
 
-### 5. Status Dashboard
+## Local-Only Design
 
-View real-time stats:
-- Total API keys configured
-- Active API keys
-- Enabled models count
-- Current proxy port
-
-## API Endpoints
-
-### Manage API Keys
-
-```bash
-# List all keys
-curl http://localhost:3000/api/keys
-
-# Add a new key
-curl -X POST http://localhost:3000/api/keys \
-  -H "Content-Type: application/json" \
-  -d '{"name":"My Key","value":"user_abc123","status":"active"}'
-
-# Update a key (index 0)
-curl -X PUT http://localhost:3000/api/keys \
-  -H "Content-Type: application/json" \
-  -d '{"index":0,"name":"Updated Key","value":"user_xyz789","status":"active"}'
-
-# Delete a key (index 0)
-curl -X DELETE http://localhost:3000/api/keys \
-  -H "Content-Type: application/json" \
-  -d '{"index":0}'
-```
-
-### Manage Models
-
-```bash
-# List all models
-curl http://localhost:3000/api/models
-
-# Update model status
-curl -X POST http://localhost:3000/api/models \
-  -H "Content-Type: application/json" \
-  -d '{
-    "models": [
-      {"id":"deepseek/deepseek-v4-pro","name":"DeepSeek V4 Pro","enabled":true},
-      {"id":"deepseek/deepseek-v4-flash","name":"DeepSeek V4 Flash","enabled":false}
-    ]
-  }'
-```
-
-### Configuration
-
-```bash
-# Get current config
-curl http://localhost:3000/api/config
-
-# Update configuration
-curl -X POST http://localhost:3000/api/config \
-  -H "Content-Type: application/json" \
-  -d '{
-    "bindHost":"localhost",
-    "port":3000,
-    "apiUrl":"https://api.commandcode.ai",
-    "cliVersion":"0.26.24"
-  }'
-```
-
-## Configuration File
-
-All settings are stored in `proxy-config.json` in the proxy directory:
-
-```json
-{
-  "bindHost": "localhost",
-  "port": 3000,
-  "apiUrl": "https://api.commandcode.ai",
-  "cliVersion": "0.26.24",
-  "apiKeys": [
-    {
-      "name": "Primary Key",
-      "value": "user_abc123...",
-      "status": "active"
-    }
-  ],
-  "models": [
-    {
-      "id": "deepseek/deepseek-v4-pro",
-      "name": "DeepSeek V4 Pro",
-      "enabled": true
-    }
-  ]
-}
-```
+- This release always binds to `localhost`
+- Port changes are saved, but you need to restart the proxy process for the new port to take effect
 
 ## Troubleshooting
 
-### Dashboard not loading
-1. Check proxy is running: `curl http://localhost:3000/health`
-2. Verify port 3000 is not in use by another application
-3. Check `dashboard.html` exists in the proxy directory
+### A credential says it needs attention
 
-### Cannot save configuration
-1. Ensure proxy has write permissions to the directory
-2. Check `proxy-config.json` is not read-only
-3. Verify JSON format is valid
+- Re-run validation
+- Confirm the secret is current
+- Confirm `baseUrl` and `authType` match the provider
 
-### API keys not working
-1. Ensure API key starts with `user_`
-2. Check key status is "active"
-3. Verify key is saved in configuration
+### A model has no usable credential
 
-### Models not appearing
-1. Check models are enabled in configuration
-2. Refresh the dashboard page
-3. Verify model IDs match Command Code API
+- Make sure at least one active credential exists for that provider
+- If model binding is enabled, make sure the credential includes that model
 
-## Security Notes
+### Legacy keys disappeared
 
-⚠️ **Important Security Considerations:**
-
-1. **Local Access Only**: By default, the dashboard binds to `localhost:3000`. Do not expose to public internet without authentication.
-
-2. **API Key Storage**: API keys are stored in plain text in `proxy-config.json`. Protect this file:
-   ```cmd
-   icacls proxy-config.json /grant %USERNAME%:R
-   ```
-
-3. **Network Exposure**: If binding to `0.0.0.0`, ensure firewall rules restrict access to trusted networks only.
-
-4. **Production Use**: For production deployments, add authentication middleware to protect the dashboard and management APIs.
-
-## Credits
-
-Dashboard design inspired by [commandcode-bridge](https://github.com/yelixir-dev/commandcode-bridge) console.
+They were likely migrated into the vault automatically. Check the unified **Credentials** view rather than looking for the old `apiKeys` list.

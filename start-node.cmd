@@ -30,9 +30,10 @@ echo [INFO] Runtime: Node.js
 
 echo [3/3] Starting proxy...
 echo.
+if not defined PROXY_PORT set PROXY_PORT=3000
 echo ==================================================
-echo  Proxy: http://localhost:3000
-echo  Dashboard: http://localhost:3000/dashboard
+echo  Proxy: http://localhost:%PROXY_PORT%
+echo  Dashboard: http://localhost:%PROXY_PORT%/dashboard
 echo ==================================================
 echo.
 
