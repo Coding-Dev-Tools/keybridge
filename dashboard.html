@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Command Code Vault</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
     :root {
@@ -215,7 +218,8 @@
 
     .form-control,
     .form-select,
-    textarea.form-control {
+    textarea.form-control,
+    .input-group .form-control {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 14px;
@@ -223,13 +227,36 @@
       padding: 0.72rem 0.9rem;
     }
 
+    .input-group {
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .input-group .form-control {
+      border-right: none;
+    }
+
+    .input-group .btn-ghost {
+      border-radius: 0 14px 14px 0;
+      border-left: none;
+    }
+
     .form-control:focus,
     .form-select:focus,
-    textarea.form-control:focus {
+    textarea.form-control:focus,
+    .input-group .form-control:focus {
       background: rgba(255, 255, 255, 0.08);
       border-color: rgba(166, 242, 199, 0.28);
       box-shadow: 0 0 0 0.2rem rgba(72, 182, 125, 0.18);
       color: var(--text);
+      outline: none;
+      z-index: 1;
+      position: relative;
+    }
+
+    .form-select option {
+      background: #0a1512;
+      color: #e8f5ee;
     }
 
     .form-control::placeholder {
@@ -323,6 +350,7 @@
     }
 
     .credential-card {
+      position: relative;
       padding: 16px;
       border-radius: 18px;
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -391,7 +419,7 @@
 
     .credential-stats {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
       margin-top: 12px;
     }
@@ -418,8 +446,9 @@
     .credential-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       justify-content: flex-end;
+      align-items: center;
     }
 
     .inline-note {
@@ -541,9 +570,73 @@
         justify-content: stretch;
       }
 
-      .credential-actions .btn {
+      .credential-actions .btn:not(.btn-arrow-up):not(.btn-arrow-dn):not(.move-separator) {
         width: 100%;
       }
+    }
+
+    .credential-card:active {
+      cursor: default;
+    }
+
+    .priority-badge {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--accent-strong);
+      color: #072118;
+      font-size: 0.68rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .move-separator {
+      width: 1px;
+      align-self: stretch;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 0 2px;
+    }
+
+    .btn-arrow-up,
+    .btn-arrow-dn {
+      width: 32px;
+      height: 30px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      background: rgba(6, 12, 11, 0.6);
+      color: var(--muted);
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .btn-arrow-up:hover,
+    .btn-arrow-dn:hover {
+      background: var(--accent-strong);
+      color: #072118;
+      border-color: var(--accent-strong);
+    }
+
+    .btn-arrow-up:active,
+    .btn-arrow-dn:active {
+      transform: scale(0.92);
+    }
+
+    .btn-arrow-up.disabled-arrow,
+    .btn-arrow-dn.disabled-arrow {
+      opacity: 0.25;
     }
   </style>
 </head>
@@ -563,7 +656,7 @@
         </div>
         <div class="d-flex flex-column gap-2 align-items-lg-end">
           <div class="status-pill">
-            <span id="statusDot" class="status-dot"></span>
+            <span id="statusDot" class="status-dot" role="status" aria-label="Proxy status"></span>
             <span id="statusText">Checking proxy health…</span>
           </div>
           <div class="status-pill">
@@ -593,7 +686,7 @@
       <div class="panel summary-card">
         <div class="summary-label">Port</div>
         <div class="summary-value" id="summaryPort">3000</div>
-        <div class="summary-foot">Bound to localhost only</div>
+        <div class="summary-foot">Bound to 0.0.0.0 by default</div>
       </div>
     </section>
 
@@ -615,15 +708,29 @@
         </div>
 
         <div class="toolbar">
-          <input id="searchInput" class="form-control" type="search" placeholder="Search by name, provider, tag, model" oninput="renderCredentials()">
-          <select id="providerFilter" class="form-select" onchange="renderCredentials()"></select>
-          <select id="typeFilter" class="form-select" onchange="renderCredentials()">
+          <input id="searchInput" class="form-control" type="search" placeholder="Search by name, provider, tag, model" aria-label="Search credentials" oninput="renderCredentials()">
+          <select id="providerFilter" class="form-select" aria-label="Filter by provider" onchange="renderCredentials()">
+            <option value="all">All Providers</option>
+            <option value="commandcode">Command Code</option>
+            <option value="openai">OpenAI</option>
+            <option value="opencode">Opencode</option>
+            <option value="opencode-compatible">Opencode-Compatible</option>
+            <option value="chatgpt">ChatGPT (OpenAI OAuth)</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="google-ai">Google AI</option>
+            <option value="groq">Groq</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="nvidia">NVIDIA</option>
+            <option value="wafer">Wafer</option>
+            <option value="other">Other</option>
+          </select>
+          <select id="typeFilter" class="form-select" aria-label="Filter by credential type" onchange="renderCredentials()">
             <option value="all">All Types</option>
             <option value="api_key">API Keys</option>
             <option value="bearer_token">Bearer Tokens</option>
             <option value="oauth_token_bundle">OAuth Bundles</option>
           </select>
-          <select id="statusFilter" class="form-select" onchange="renderCredentials()">
+          <select id="statusFilter" class="form-select" aria-label="Filter by status" onchange="renderCredentials()">
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -648,7 +755,7 @@
             <button class="btn btn-action" onclick="refreshAll()">
               <i class="bi bi-arrow-repeat me-2"></i>Refresh Vault
             </button>
-            <button class="btn btn-ghost" onclick="checkHealth()">
+            <button class="btn btn-ghost" onclick="loadHealth()">
               <i class="bi bi-heart-pulse me-2"></i>Check Health
             </button>
             <button class="btn btn-ghost" onclick="saveConfiguration()">
@@ -656,6 +763,16 @@
             </button>
             <button class="btn btn-ghost" onclick="restartProxy()">
               <i class="bi bi-arrow-clockwise me-2"></i>Restart Reminder
+            </button>
+          </div>
+          <hr class="my-3" style="border-color:rgba(255,255,255,0.06)">
+          <div>
+            <label class="form-label">OAuth Login</label>
+            <select id="oauthProviderSelect" class="form-select mb-2">
+              <option value="">-- Select provider --</option>
+            </select>
+            <button class="btn btn-action w-100" onclick="startOAuthLogin()">
+              <i class="bi bi-box-arrow-in-right me-2"></i>Login with Provider
             </button>
           </div>
         </div>
@@ -679,7 +796,20 @@
             <label class="form-label">CLI Version</label>
             <input id="cliVersion" class="form-control" type="text">
           </div>
-          <div class="inline-note">The proxy always binds to `localhost` for this release.</div>
+          <div class="inline-note">Set <code>PROXY_BIND_HOST</code> to <code>127.0.0.1</code> to restrict to localhost only.</div>
+        </div>
+
+        <div class="panel side-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Providers</h2>
+              <p class="panel-subtitle">Built-in and custom providers. Add any API endpoint.</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="openProviderPrompt()">
+              <i class="bi bi-plus-lg me-1"></i>Add
+            </button>
+          </div>
+          <div id="providersList" class="list-clean"></div>
         </div>
 
         <div class="panel side-panel">
@@ -754,7 +884,22 @@
               </div>
               <div class="col-md-6">
                 <label class="form-label">Provider</label>
-                <select id="credentialProvider" class="form-select" onchange="onProviderChange()"></select>
+                <select id="credentialProvider" class="form-select" onchange="onProviderChange()" style="font-weight:600;min-height:44px;">
+                  <option value="" disabled selected>-- Select Provider --</option>
+                  <option value="commandcode">Command Code</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="opencode">Opencode</option>
+                  <option value="opencode-compatible">Opencode-Compatible</option>
+                  <option value="chatgpt">ChatGPT (OpenAI OAuth)</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google-ai">Google AI</option>
+                  <option value="groq">Groq</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="nvidia">NVIDIA</option>
+                  <option value="wafer">Wafer</option>
+                  <option value="other">Other</option>
+                </select>
+                <div class="form-text mt-1">Click dropdown to see all 12+ providers. Add custom providers in the sidebar.</div>
               </div>
               <div class="col-md-6">
                 <label class="form-label">Credential Type</label>
@@ -789,7 +934,12 @@
 
             <div id="singleSecretFields">
               <label class="form-label">Secret Value</label>
-              <input id="credentialSecretValue" class="form-control" type="text" placeholder="Paste the provider secret">
+              <div class="input-group">
+                <input id="credentialSecretValue" class="form-control" type="password" placeholder="Paste the provider secret" autocomplete="off">
+                <button class="btn btn-ghost" type="button" onclick="togglePasswordField('credentialSecretValue', this)" title="Show secret" aria-label="Toggle secret visibility">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </div>
               <div class="form-text" id="secretHelpText">Leave blank while editing to keep the existing secret.</div>
             </div>
 
@@ -797,11 +947,21 @@
               <div class="token-pair">
                 <div>
                   <label class="form-label">Access Token</label>
-                  <input id="credentialAccessToken" class="form-control" type="text" placeholder="Access token">
+                  <div class="input-group">
+                    <input id="credentialAccessToken" class="form-control" type="password" placeholder="Access token" autocomplete="off">
+                    <button class="btn btn-ghost" type="button" onclick="togglePasswordField('credentialAccessToken', this)" title="Show token" aria-label="Toggle access token visibility">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label class="form-label">Refresh Token</label>
-                  <input id="credentialRefreshToken" class="form-control" type="text" placeholder="Refresh token (optional)">
+                  <div class="input-group">
+                    <input id="credentialRefreshToken" class="form-control" type="password" placeholder="Refresh token (optional)" autocomplete="off">
+                    <button class="btn btn-ghost" type="button" onclick="togglePasswordField('credentialRefreshToken', this)" title="Show token" aria-label="Toggle refresh token visibility">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div class="mt-3">
@@ -813,6 +973,11 @@
                 <input id="credentialMonthlyLimit" class="form-control" type="number" min="0" placeholder="e.g., 500 (requests/month, 0 = unlimited)">
                 <div class="form-text">Optional cap for automatic rotation balancing. Requests will prefer keys with lower saturation.</div>
               </div>
+              <div class="mt-3">
+                <label class="form-label">Routing Weight</label>
+                <input id="credentialWeight" class="form-control" type="number" min="0.1" max="10" step="0.1" placeholder="1.0">
+                <div class="form-text">Higher weight = more likely to be selected. Use 2.0 for premium keys, 0.5 for backup keys.</div>
+              </div>
               <div class="form-text">Leave token fields blank while editing to keep the current stored bundle.</div>
             </div>
 
@@ -820,6 +985,12 @@
               <label class="form-label">Bind to Models</label>
               <div id="modelCheckboxes" class="checkbox-grid"></div>
               <div class="form-text">Leave all unchecked to allow this credential for every model owned by its provider.</div>
+            </div>
+
+            <div class="mt-4">
+              <label class="form-label">Tool Binding <span class="text-muted">(optional)</span></label>
+              <div id="toolCheckboxes" class="checkbox-grid"></div>
+              <div class="form-text">Check tools to restrict this key. Leave all unchecked to serve every client. Clients identify themselves via the <code>x-source</code> or <code>x-tool</code> request header.</div>
             </div>
           </form>
         </div>
@@ -831,47 +1002,183 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Add/Edit Model Modal -->
+  <div class="modal fade" id="modelModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modelModalTitle">Add Model</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="modelForm" onsubmit="saveModel(event)">
+            <div class="mb-3">
+              <label class="form-label">Display Name</label>
+              <input id="modelName" class="form-control" type="text" required placeholder="GPT-4o">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Model ID</label>
+              <input id="modelId" class="form-control" type="text" required placeholder="gpt-4o">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Provider ID</label>
+              <input id="modelProvider" class="form-control" type="text" required placeholder="openai">
+            </div>
+            <button type="submit" class="btn btn-action w-100">Save Model</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Provider Modal -->
+  <div class="modal fade" id="providerModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add Provider</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="providerForm" onsubmit="saveProvider(event)">
+            <div class="mb-3">
+              <label class="form-label">Provider ID (lowercase, no spaces)</label>
+              <input id="providerId" class="form-control" type="text" required placeholder="my-provider">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Display Name</label>
+              <input id="providerLabel" class="form-control" type="text" required placeholder="My Provider">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Base URL</label>
+              <input id="providerBaseUrl" class="form-control" type="url" required placeholder="https://api.example.com/v1">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Auth Type</label>
+              <select id="providerAuthType" class="form-select" onchange="toggleOAuthProviderFields()">
+                <option value="bearer">Bearer</option>
+                <option value="x-api-key">x-api-key</option>
+                <option value="x-goog-api-key">x-goog-api-key</option>
+                <option value="oauth">OAuth</option>
+              </select>
+            </div>
+            <div id="oauthProviderFields" class="hidden">
+              <div class="mb-3">
+                <label class="form-label">Authorization URL</label>
+                <input id="providerAuthUrl" class="form-control" type="url" placeholder="https://provider.com/oauth/authorize">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Token URL</label>
+                <input id="providerTokenUrl" class="form-control" type="url" placeholder="https://provider.com/oauth/token">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Client ID</label>
+                <input id="providerClientId" class="form-control" type="text" placeholder="your-client-id">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Client Secret</label>
+                <input id="providerClientSecret" class="form-control" type="password" placeholder="your-client-secret" autocomplete="off">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Scopes</label>
+                <input id="providerScopes" class="form-control" type="text" placeholder="openid profile">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-action w-100">Save Provider</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     let config = {};
     let credentials = [];
     let models = [];
     let providers = [];
     let credentialModal = null;
+    let modelModal = null;
+    let providerModal = null;
 
     const providerLabels = {};
 
+    const PROVIDER_DEFAULTS_IDS = new Set([
+      'commandcode','openai','opencode','opencode-compatible','chatgpt',
+      'anthropic','google-ai','groq','openrouter','nvidia','wafer','other'
+    ]);
+
+    const KNOWN_TOOLS = ['openclaw', 'hermes', 'cursor', 'vscode', 'claude-desktop'];
+    const KNOWN_TOOL_LABELS = {
+      openclaw: 'OpenClaw', hermes: 'Hermes', cursor: 'Cursor',
+      vscode: 'VS Code', 'claude-desktop': 'Claude Desktop',
+    };
+
+    function apiFetch(url, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (typeof window !== 'undefined' && window.PROXY_API_KEY) {
+        headers['Authorization'] = `Bearer ${window.PROXY_API_KEY}`;
+      }
+      return fetch(url, { ...options, headers });
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
       credentialModal = new bootstrap.Modal(document.getElementById('credentialModal'));
+      modelModal = new bootstrap.Modal(document.getElementById('modelModal'));
+      providerModal = new bootstrap.Modal(document.getElementById('providerModal'));
+
+      // Warn on unsaved changes in credential modal
+      document.getElementById('credentialModal').addEventListener('hide.bs.modal', (e) => {
+        const form = document.getElementById('credentialForm');
+        if (form.dataset.dirty === 'true' && !confirm('Discard unsaved changes?')) {
+          e.preventDefault();
+        }
+      });
+
+      // Track dirty state via a single delegated listener on the form
+      document.getElementById('credentialForm').addEventListener('input', () => {
+        document.getElementById('credentialForm').dataset.dirty = 'true';
+      });
+
       await refreshAll();
     });
 
     async function refreshAll() {
-      await Promise.all([
+      const results = await Promise.allSettled([
         loadProviders(),
-        loadHealth(),
+        loadHealth(true),
         loadConfig(),
         loadCredentials(),
         loadModels(),
       ]);
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0 && failures.length === results.length) {
+        showToast('Unable to connect to the proxy server', 'danger');
+      }
       updateSummary();
       renderCredentials();
       renderModels();
+      renderProviders();
+      refreshOAuthProviders();
     }
 
     async function loadProviders() {
-      const response = await fetch('/api/providers');
-      const data = await response.json();
-      providers = data.providers || [];
-      providers.forEach((provider) => {
-        providerLabels[provider.id] = provider.label;
-      });
-      renderProviderSelects();
+      try {
+        const response = await apiFetch('/api/providers');
+        const data = await response.json();
+        providers = data.providers || [];
+        providers.forEach((provider) => {
+          providerLabels[provider.id] = provider.label;
+        });
+        renderProviderSelects();
+      } catch (_) {
+        // providers stay at previous state
+      }
     }
 
     async function loadHealth(silent = false) {
       try {
-        const response = await fetch('/health');
+        const response = await apiFetch('/health');
         const data = await response.json();
         document.getElementById('statusDot').className = 'status-dot online';
         document.getElementById('statusText').textContent = `Proxy healthy · v${data.version}`;
@@ -888,36 +1195,69 @@
     }
 
     async function loadConfig() {
-      const response = await fetch('/api/config');
-      config = await response.json();
-      document.getElementById('proxyPortInput').value = config.port || 3000;
-      document.getElementById('apiUrl').value = config.apiUrl || 'https://api.commandcode.ai';
-      document.getElementById('cliVersion').value = config.cliVersion || '0.26.24';
+      try {
+        const response = await apiFetch('/api/config');
+        config = await response.json();
+        document.getElementById('proxyPortInput').value = config.port || 3000;
+        document.getElementById('apiUrl').value = config.apiUrl || 'https://api.commandcode.ai';
+        document.getElementById('cliVersion').value = config.cliVersion || '0.26.24';
+      } catch (_) {
+        // config stays at previous state
+      }
     }
 
     async function loadCredentials() {
-      const response = await fetch('/api/credentials');
-      const data = await response.json();
-      credentials = data.credentials || [];
+      try {
+        const response = await apiFetch('/api/credentials');
+        const data = await response.json();
+        credentials = data.credentials || [];
+      } catch (_) {
+        // credentials stay at previous state
+      }
     }
 
     async function loadModels() {
-      const response = await fetch('/api/models');
-      const data = await response.json();
-      models = data.models || [];
+      try {
+        const response = await apiFetch('/api/models');
+        const data = await response.json();
+        models = data.models || [];
+      } catch (_) {
+        // models stay at previous state
+      }
     }
 
     function renderProviderSelects() {
       const providerFilter = document.getElementById('providerFilter');
       const providerSelect = document.getElementById('credentialProvider');
+
+      // Save current selection
+      const currentSelection = providerSelect.value;
+
+      // Rebuild filter dropdown
       providerFilter.innerHTML = ['<option value="all">All Providers</option>']
         .concat(providers.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.label)}</option>`))
         .join('');
-      providerSelect.innerHTML = providers
-        .map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.label)}</option>`)
+
+      // Rebuild credential provider select: preserve built-ins, add custom ones
+      const builtInHtml = Array.from(providerSelect.options)
+        .filter(opt => PROVIDER_DEFAULTS_IDS.has(opt.value))
+        .map(opt => opt.outerHTML)
         .join('');
-      if (!providerSelect.value && providers[0]) providerSelect.value = providers[0].id;
-      onProviderChange();
+
+      providerSelect.innerHTML = builtInHtml;
+      providers.forEach((provider) => {
+        if (!PROVIDER_DEFAULTS_IDS.has(provider.id)) {
+          const opt = document.createElement('option');
+          opt.value = provider.id;
+          opt.textContent = provider.label;
+          providerSelect.appendChild(opt);
+        }
+      });
+
+      // Restore selection if still valid
+      if (currentSelection && Array.from(providerSelect.options).some(o => o.value === currentSelection)) {
+        providerSelect.value = currentSelection;
+      }
     }
 
     function updateSummary() {
@@ -962,6 +1302,9 @@
       const container = document.getElementById('vaultList');
       const filtered = getFilteredCredentials();
 
+      filtered.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      filtered.forEach((c, i) => c._rank = i + 1);
+
       if (filtered.length === 0) {
         container.innerHTML = `
           <div class="empty-state">
@@ -973,30 +1316,20 @@
         return;
       }
 
-      const groups = filtered.reduce((accumulator, credential) => {
-        if (!accumulator[credential.provider]) accumulator[credential.provider] = [];
-        accumulator[credential.provider].push(credential);
-        return accumulator;
-      }, {});
-
-      container.innerHTML = Object.entries(groups).map(([providerId, group]) => {
-        const providerLabel = providerLabels[providerId] || providerId;
-        return `
+      container.innerHTML = `
           <section class="provider-group">
             <div class="provider-heading">
               <div>
-                <div class="provider-name">${escapeHtml(providerLabel)}</div>
-                <div class="provider-meta">${group.length} credential${group.length === 1 ? '' : 's'} in this vault group</div>
+                <div class="provider-name">All Credentials</div>
+                <div class="provider-meta">${filtered.length} credential${filtered.length === 1 ? '' : 's'} · #1 is tried first</div>
               </div>
-              <span class="badge-soft">${escapeHtml(providerId)}</span>
             </div>
-            ${group.map(renderCredentialCard).join('')}
+            ${filtered.map(cred => renderCredentialCard(cred, filtered.length)).join('')}
           </section>
         `;
-      }).join('');
     }
 
-    function renderCredentialCard(credential) {
+    function renderCredentialCard(credential, groupCount = 1) {
       const validationBadge = getValidationBadge(credential.validation);
       const usage = credential.usage || {};
       const quotaText = credential.validation?.quota?.credits
@@ -1005,11 +1338,15 @@
       const modelText = credential.models && credential.models.length > 0
         ? credential.models.join(', ')
         : 'All provider models';
+      const toolChips = (credential.tools || []).length > 0
+        ? credential.tools.map(t => `<span class="badge badge-soft" style="background:rgba(166,242,199,0.12);color:#d6ffe9"><i class="bi bi-plug"></i> ${escapeHtml(KNOWN_TOOL_LABELS[t] || t)}</span>`).join(' ')
+        : '';
       const updatedText = credential.updatedAt ? timeAgo(credential.updatedAt) : 'just now';
       const revealLabel = credential.credentialType === 'oauth_token_bundle' ? 'Reveal tokens' : 'Reveal secret';
 
       return `
-        <article class="credential-card">
+        <article class="credential-card" data-credential-id="${escapeAttr(credential.id)}" data-provider="${escapeAttr(credential.provider)}">
+          <span class="priority-badge">#${credential._rank}</span>
           <div class="credential-top">
             <div class="flex-grow-1">
               <h3 class="credential-name">${escapeHtml(credential.name)}</h3>
@@ -1019,6 +1356,7 @@
                 <span class="badge-soft">${escapeHtml(formatCredentialType(credential.credentialType))}</span>
                 <span class="badge-soft">${escapeHtml(credential.authType || 'bearer')}</span>
                 ${validationBadge}
+                ${toolChips}
               </div>
               <div class="text-muted small">
                 ${credential.baseUrl ? `${escapeHtml(credential.baseUrl)} · ` : ''}
@@ -1043,6 +1381,9 @@
               <button class="btn btn-danger-soft btn-sm" onclick="deleteCredential('${escapeJs(credential.id)}')">
                 <i class="bi bi-trash me-1"></i>Delete
               </button>
+              <div class="move-separator"></div>
+              <button class="btn btn-arrow-up" onclick="moveCredential('${escapeJs(credential.id)}','up')" title="Move up"><i class="bi bi-chevron-up"></i></button>
+              <button class="btn btn-arrow-dn" onclick="moveCredential('${escapeJs(credential.id)}','down')" title="Move down"><i class="bi bi-chevron-down"></i></button>
             </div>
           </div>
 
@@ -1058,6 +1399,10 @@
             <div class="credential-stat">
               <div class="credential-stat-label">${credential.monthlyLimit ? 'Saturation' : 'Account / Quota'}</div>
               <div class="credential-stat-value">${credential.monthlyLimit ? saturationBar(usage.requestCount||0, credential.monthlyLimit) : escapeHtml(quotaText)}</div>
+            </div>
+            <div class="credential-stat">
+              <div class="credential-stat-label">Weight</div>
+              <div class="credential-stat-value">${credential.weight || 1}</div>
             </div>
           </div>
 
@@ -1112,6 +1457,25 @@
       return Array.from(document.querySelectorAll('#modelCheckboxes input:checked')).map((input) => input.value);
     }
 
+    function buildToolCheckboxes(selectedTools = []) {
+      const container = document.getElementById('toolCheckboxes');
+      if (!container) return;
+      container.innerHTML = KNOWN_TOOLS.map(tool => `
+        <label class="model-check">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" value="${tool}" ${selectedTools.includes(tool) ? 'checked' : ''}>
+            <span class="ms-2 fw-semibold">${KNOWN_TOOL_LABELS[tool] || tool}</span>
+          </div>
+        </label>
+      `).join('');
+    }
+
+    function getSelectedTools() {
+      const container = document.getElementById('toolCheckboxes');
+      if (!container) return [];
+      return Array.from(document.querySelectorAll('#toolCheckboxes input:checked')).map((input) => input.value);
+    }
+
     function openCredentialModal(credentialId = null) {
       resetCredentialForm();
       if (credentialId) {
@@ -1131,20 +1495,22 @@
           document.getElementById('credentialExpiresAt').value = toLocalDateTime(credential.expiresAt);
         }
         document.getElementById('credentialMonthlyLimit').value = credential.monthlyLimit || '';
+        document.getElementById('credentialWeight').value = credential.weight || '';
         buildModelCheckboxes(credential.models || []);
+        buildToolCheckboxes(credential.tools || []);
       } else {
         document.getElementById('credentialModalTitle').textContent = 'Add Credential';
       }
       onProviderChange();
       onCredentialTypeChange();
       credentialModal.show();
+      document.getElementById('credentialForm').dataset.dirty = 'false';
     }
 
     function resetCredentialForm() {
       document.getElementById('credentialForm').reset();
       document.getElementById('credentialId').value = '';
       document.getElementById('credentialStatus').value = 'active';
-      if (providers[0]) document.getElementById('credentialProvider').value = providers[0].id;
       document.getElementById('credentialType').value = 'api_key';
       document.getElementById('credentialAuthType').value = 'bearer';
       document.getElementById('credentialBaseUrl').value = '';
@@ -1153,11 +1519,14 @@
       document.getElementById('credentialRefreshToken').value = '';
       document.getElementById('credentialExpiresAt').value = '';
       document.getElementById('credentialMonthlyLimit').value = '';
+      renderProviderSelects();
       buildModelCheckboxes([]);
+      buildToolCheckboxes([]);
     }
 
     function onProviderChange() {
       const providerId = document.getElementById('credentialProvider').value;
+      if (!providerId) return;
       const provider = providers.find((item) => item.id === providerId);
       if (!provider) return;
       const credentialTypeEl = document.getElementById('credentialType');
@@ -1166,10 +1535,6 @@
 
       if (!document.getElementById('credentialId').value && provider.baseUrl) {
         baseUrlEl.value = provider.baseUrl;
-      }
-
-      if (provider.id === 'chatgpt') {
-        credentialTypeEl.value = 'oauth_token_bundle';
       }
 
       authTypeEl.value = provider.authType || authTypeEl.value || 'bearer';
@@ -1195,10 +1560,17 @@
 
     async function saveCredential() {
       const id = document.getElementById('credentialId').value;
+      const name = document.getElementById('credentialName').value.trim();
+      const provider = document.getElementById('credentialProvider').value;
+      if (!name) { showToast('Display name is required', 'danger'); return; }
+      if (!provider) { showToast('Provider is required', 'danger'); return; }
+
+      const saveBtn = document.querySelector('#credentialModal .btn-action');
+      setButtonLoading(saveBtn, true);
       const payload = {
         id: id || undefined,
-        name: document.getElementById('credentialName').value.trim(),
-        provider: document.getElementById('credentialProvider').value,
+        name,
+        provider,
         credentialType: document.getElementById('credentialType').value,
         authType: document.getElementById('credentialAuthType').value,
         baseUrl: document.getElementById('credentialBaseUrl').value.trim(),
@@ -1206,6 +1578,7 @@
         labels: document.getElementById('credentialLabels').value.split(',').map((item) => item.trim()).filter(Boolean),
         notes: document.getElementById('credentialNotes').value.trim(),
         models: getSelectedModels(),
+        tools: getSelectedTools(),
       };
 
       if (document.getElementById('credentialExpiresAt').value) {
@@ -1213,6 +1586,8 @@
       }
       const monthlyLimit = Number(document.getElementById('credentialMonthlyLimit').value);
       if (monthlyLimit > 0) payload.monthlyLimit = monthlyLimit;
+      const weight = Number(document.getElementById('credentialWeight').value);
+      if (weight > 0 && weight !== 1) payload.weight = weight;
 
       if (payload.credentialType === 'oauth_token_bundle') {
         payload.accessToken = document.getElementById('credentialAccessToken').value.trim();
@@ -1222,7 +1597,7 @@
       }
 
       try {
-        const response = await fetch('/api/credentials', {
+        const response = await apiFetch('/api/credentials', {
           method: id ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1235,9 +1610,12 @@
         updateSummary();
         renderCredentials();
         credentialModal.hide();
+        document.getElementById('credentialForm').dataset.dirty = 'false';
         showToast(id ? 'Credential updated' : 'Credential added', 'success');
       } catch (error) {
         showToast(error.message, 'danger');
+      } finally {
+        setButtonLoading(saveBtn, false);
       }
     }
 
@@ -1246,7 +1624,7 @@
       if (!credential) return;
       if (!confirm(`Delete "${credential.name}" from the vault?`)) return;
       try {
-        const response = await fetch('/api/credentials', {
+        const response = await apiFetch('/api/credentials', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id }),
@@ -1263,8 +1641,10 @@
     }
 
     async function validateCredential(id) {
+      const btn = document.querySelector(`.credential-card[data-credential-id="${id}"] .btn-ghost`);
+      setButtonLoading(btn, true);
       try {
-        const response = await fetch('/api/credentials/validate', {
+        const response = await apiFetch('/api/credentials/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id }),
@@ -1276,12 +1656,16 @@
         showToast('Credential validated', data.validation?.valid ? 'success' : 'warning');
       } catch (error) {
         showToast(error.message, 'danger');
+      } finally {
+        setButtonLoading(btn, false);
       }
     }
 
     async function validateAllCredentials() {
+      const btn = document.querySelector('.vault-panel .btn-ghost');
+      setButtonLoading(btn, true);
       try {
-        const response = await fetch('/api/credentials/validate-all', { method: 'POST' });
+        const response = await apiFetch('/api/credentials/validate-all', { method: 'POST' });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error?.message || 'Validation failed');
         credentials = data.credentials || credentials;
@@ -1290,23 +1674,24 @@
         showToast(`Validated ${data.results?.length || 0} credential${data.results?.length === 1 ? '' : 's'}`, 'success');
       } catch (error) {
         showToast(error.message, 'danger');
+      } finally {
+        setButtonLoading(btn, false);
       }
     }
 
     async function revealCredential(id) {
       try {
-        const response = await fetch('/api/credentials/reveal', {
+        const response = await apiFetch('/api/credentials/reveal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id }),
         });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to reveal credential');
-        if (data.credentialType === 'oauth_token_bundle') {
-          alert(`Access Token:\n${data.accessToken || '(none)'}\n\nRefresh Token:\n${data.refreshToken || '(none)'}`);
-        } else {
-          alert(data.secretValue || '(empty secret)');
-        }
+        const value = data.credentialType === 'oauth_token_bundle'
+          ? `Access: ${data.accessToken || '(none)'}\nRefresh: ${data.refreshToken || '(none)'}`
+          : (data.secretValue || '(empty)');
+        showRevealToast(value);
       } catch (error) {
         showToast(error.message, 'danger');
       }
@@ -1314,7 +1699,7 @@
 
     async function copyCredential(id) {
       try {
-        const response = await fetch('/api/credentials/reveal', {
+        const response = await apiFetch('/api/credentials/reveal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id }),
@@ -1322,6 +1707,11 @@
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to copy credential');
         const value = data.credentialType === 'oauth_token_bundle' ? (data.accessToken || '') : (data.secretValue || '');
+        if (!navigator.clipboard?.writeText) {
+          showRevealToast(value);
+          showToast('Clipboard unavailable — secret shown above', 'warning');
+          return;
+        }
         await navigator.clipboard.writeText(value);
         showToast('Credential copied to clipboard', 'success');
       } catch (error) {
@@ -1331,7 +1721,7 @@
 
     async function saveConfiguration() {
       try {
-        const response = await fetch('/api/config', {
+        const response = await apiFetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1352,7 +1742,7 @@
 
     async function restartProxy() {
       try {
-        const response = await fetch('/api/restart', { method: 'POST' });
+        const response = await apiFetch('/api/restart', { method: 'POST' });
         const data = await response.json();
         showToast(data.message || 'Restart the local proxy process to apply saved changes.', 'info');
       } catch (error) {
@@ -1360,15 +1750,46 @@
       }
     }
 
-    async function openModelPrompt() {
-      const name = prompt('Model display name');
-      if (!name) return;
-      const id = prompt('Model ID');
-      if (!id) return;
-      const provider = prompt('Provider ID', 'openai');
-      if (!provider) return;
+    function startOAuthLogin() {
+      const sel = document.getElementById('oauthProviderSelect');
+      if (!sel.value) { showToast('Select an OAuth provider first', 'warning'); return; }
+      window.open(`/oauth/client/login/${encodeURIComponent(sel.value)}`, '_blank');
+    }
+
+    function refreshOAuthProviders() {
+      const sel = document.getElementById('oauthProviderSelect');
+      const oauthProviders = providers.filter(p => p.authType === 'oauth');
+      sel.innerHTML = '<option value="">-- Select provider --</option>' +
+        oauthProviders.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`).join('');
+      sel.style.display = oauthProviders.length > 0 ? '' : 'none';
+      sel.nextElementSibling.style.display = oauthProviders.length > 0 ? '' : 'none';
+    }
+
+    function toggleOAuthProviderFields() {
+      const isOAuth = document.getElementById('providerAuthType').value === 'oauth';
+      document.getElementById('oauthProviderFields').classList.toggle('hidden', !isOAuth);
+    }
+
+    function openModelPrompt() {
+      document.getElementById('modelModalTitle').textContent = 'Add Model';
+      document.getElementById('modelName').value = '';
+      document.getElementById('modelId').value = '';
+      document.getElementById('modelProvider').value = '';
+      modelModal.show();
+    }
+
+    function saveModel(event) {
+      event.preventDefault();
+      const name = document.getElementById('modelName').value.trim();
+      const id = document.getElementById('modelId').value.trim();
+      const provider = document.getElementById('modelProvider').value.trim();
+      if (!name || !id || !provider) {
+        showToast('All fields are required', 'danger');
+        return;
+      }
       models.push({ id, name, provider, enabled: true });
-      await persistModels();
+      persistModels();
+      modelModal.hide();
     }
 
     async function toggleModel(modelId) {
@@ -1386,7 +1807,7 @@
 
     async function persistModels() {
       try {
-        const response = await fetch('/api/models', {
+        const response = await apiFetch('/api/models', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ models }),
@@ -1401,6 +1822,94 @@
       } catch (error) {
         showToast(error.message, 'danger');
       }
+    }
+
+    function openProviderPrompt() {
+      document.getElementById('providerId').value = '';
+      document.getElementById('providerLabel').value = '';
+      document.getElementById('providerBaseUrl').value = '';
+      document.getElementById('providerAuthType').value = 'bearer';
+      document.getElementById('providerAuthUrl').value = '';
+      document.getElementById('providerTokenUrl').value = '';
+      document.getElementById('providerClientId').value = '';
+      document.getElementById('providerClientSecret').value = '';
+      document.getElementById('providerScopes').value = '';
+      toggleOAuthProviderFields();
+      providerModal.show();
+    }
+
+    async function saveProvider(event) {
+      event.preventDefault();
+      const id = document.getElementById('providerId').value.trim();
+      const label = document.getElementById('providerLabel').value.trim();
+      const baseUrl = document.getElementById('providerBaseUrl').value.trim();
+      const authType = document.getElementById('providerAuthType').value;
+      if (!id || !label || !baseUrl) {
+        showToast('All fields are required', 'danger');
+        return;
+      }
+      const payload = { id, label, baseUrl, authType, validationPath: '/models' };
+      if (authType === 'oauth') {
+        payload.authUrl = document.getElementById('providerAuthUrl').value.trim();
+        payload.tokenUrl = document.getElementById('providerTokenUrl').value.trim();
+        payload.clientId = document.getElementById('providerClientId').value.trim();
+        payload.clientSecret = document.getElementById('providerClientSecret').value.trim();
+        payload.scopes = document.getElementById('providerScopes').value.trim();
+      }
+      try {
+        const response = await apiFetch('/api/providers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to add provider');
+        await loadProviders();
+        renderProviders();
+        renderProviderSelects();
+        showToast(`Provider "${label}" added`, 'success');
+        providerModal.hide();
+      } catch (error) {
+        showToast(error.message, 'danger');
+      }
+    }
+
+    async function deleteProvider(id) {
+      if (!confirm(`Delete provider "${id}"? Credentials using this provider will break.`)) return;
+      try {
+        const response = await apiFetch('/api/providers', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error?.message || 'Unable to delete provider');
+        await loadProviders();
+        renderProviders();
+        renderProviderSelects();
+        showToast('Provider deleted', 'success');
+      } catch (error) {
+        showToast(error.message, 'danger');
+      }
+    }
+
+    function renderProviders() {
+      const container = document.getElementById('providersList');
+      const builtInIds = ['commandcode','openai','opencode','opencode-compatible','chatgpt','anthropic','google-ai','groq','openrouter','nvidia','wafer','other'];
+      const html = providers.map((provider) => {
+        const isCustom = !builtInIds.includes(provider.id);
+        return `<div class="detail-row">
+          <div class="d-flex align-items-center gap-2">
+            <span class="provider-badge">${escapeHtml(provider.label)}</span>
+            <span class="text-muted small">${escapeHtml(provider.id)}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small">${escapeHtml(provider.authType)}</span>
+            ${isCustom ? `<button class="btn btn-ghost btn-xs" onclick="deleteProvider('${escapeHtml(provider.id)}')" title="Delete"><i class="bi bi-trash"></i></button>` : '<span class="text-muted small">Built-in</span>'}
+          </div>
+        </div>`;
+      }).join('');
+      container.innerHTML = html || '<div class="text-muted small p-2">No providers configured.</div>';
     }
 
     function clearFilters() {
@@ -1459,9 +1968,12 @@
     function toLocalDateTime(value) {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return '';
-      const offset = date.getTimezoneOffset();
-      const local = new Date(date.getTime() - offset * 60000);
-      return local.toISOString().slice(0, 16);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
     function showToast(message, type = 'info') {
@@ -1477,6 +1989,20 @@
       setTimeout(() => toast.remove(), 3200);
     }
 
+    function showRevealToast(value) {
+      const toast = document.createElement('div');
+      toast.className = 'toast align-items-center text-white bg-dark border-0 show';
+      toast.style.cssText = 'min-width:380px;max-width:600px;word-break:break-all';
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body font-monospace small py-3">${escapeHtml(value)}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+      document.getElementById('toastContainer').appendChild(toast);
+      setTimeout(() => toast.remove(), 12000);
+    }
+
     function escapeHtml(value) {
       const div = document.createElement('div');
       div.textContent = value == null ? '' : String(value);
@@ -1484,7 +2010,60 @@
     }
 
     function escapeJs(value) {
-      return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    function escapeAttr(value) {
+      return String(value).replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function togglePasswordField(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      btn.title = isPassword ? 'Hide' : 'Show';
+      btn.innerHTML = isPassword ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+    }
+
+    function setButtonLoading(btn, loading) {
+      if (loading) {
+        btn.disabled = true;
+        btn.dataset.prevHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Working…';
+      } else {
+        btn.disabled = false;
+        if (btn.dataset.prevHtml) btn.innerHTML = btn.dataset.prevHtml;
+      }
+    }
+
+    async function moveCredential(credentialId, direction) {
+      let orderedIds = credentials.map(c => c.id).filter(Boolean);
+      const idx = orderedIds.indexOf(credentialId);
+      if (idx < 0) return;
+      if (direction === 'up' && idx > 0) {
+        [orderedIds[idx], orderedIds[idx - 1]] = [orderedIds[idx - 1], orderedIds[idx]];
+      } else if (direction === 'down' && idx < orderedIds.length - 1) {
+        [orderedIds[idx], orderedIds[idx + 1]] = [orderedIds[idx + 1], orderedIds[idx]];
+      } else {
+        return;
+      }
+      try {
+        const resp = await apiFetch('/api/credentials/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderedIds }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error?.message || 'Reorder failed');
+        await loadCredentials();
+        renderCredentials();
+        showToast('Priority updated', 'success');
+      } catch (err) {
+        showToast(err.message || 'Reorder failed', 'danger');
+        await loadCredentials();
+        renderCredentials();
+      }
     }
   </script>
 </body>

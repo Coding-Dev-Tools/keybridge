@@ -1,169 +1,84 @@
-# Command Code Proxy — Project Instructions
+# context-mode — MANDATORY routing rules
 
-This is a Bun-based proxy server that creates OpenAI-compatible endpoints for the Command Code API.
+context-mode MCP tools available. Rules protect context window from flooding. One unrouted command dumps 56 KB into context.
 
-## Project Status
+## Think in Code — MANDATORY
 
-**Functional and ready for use.** Core features working:
-- Non-streaming chat completions ✅
-- Streaming chat completions ✅
-- Tool calls (function tools, tool-calls) ✅
-- Model list endpoint ✅
-- Health check endpoint ✅
-- Opencode auto-configuration ✅
-- Web dashboard with multi-key management ✅
-- Key quota/balance (monthlyCredits) display per key ✅
-- Real user name (userName) display per key ✅
-- Auto-validate all keys on dashboard load ✅
-- **Even key rotation (round-robin shuffle)** ✅
+Analyze/count/filter/compare/search/parse/transform data: **write code** via `context-mode_ctx_execute(language, code)`, `console.log()` only the answer. Do NOT read raw data into context. PROGRAM the analysis, not COMPUTE it. Pure JavaScript — Node.js built-ins only (`fs`, `path`, `child_process`). `try/catch`, handle `null`/`undefined`. One script replaces ten tool calls.
 
-## Architecture
+## BLOCKED — do NOT attempt
 
-```
-OpenAI SDK Client → Proxy (port 3000) → Command Code API (/alpha/generate)
-```
+### curl / wget — BLOCKED
+Shell `curl`/`wget` intercepted and blocked. Do NOT retry.
+Use: `context-mode_ctx_fetch_and_index(url, source)` or `context-mode_ctx_execute(language: "javascript", code: "const r = await fetch(...)")`
 
-The proxy:
-1. Accepts OpenAI-format requests at `/v1/chat/completions`
-2. Converts them to Command Code format
-3. Forwards to `https://api.commandcode.ai/alpha/generate`
-4. Parses SSE events and converts back to OpenAI format
+### Inline HTTP — BLOCKED
+`fetch('http`, `requests.get(`, `requests.post(`, `http.get(`, `http.request(` — intercepted. Do NOT retry.
+Use: `context-mode_ctx_execute(language, code)` — only stdout enters context
 
-## Key Files
+### Direct web fetching — BLOCKED
+Use: `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)`
 
-- `proxy.js` — Main proxy server (Bun)
-- `start.cmd` — Windows startup script
-- `.env` — Environment configuration (API key)
-- `.env.example` — Example environment file
-- `README.md` — Documentation
-- `AGENTS.md` — This file (project memory)
+## REDIRECTED — use sandbox
 
-## Opencode Auto-Configuration
+### Shell (>20 lines output)
+Shell ONLY for: `git`, `mkdir`, `rm`, `mv`, `cd`, `ls`, `npm install`, `pip install`.
+Otherwise: `context-mode_ctx_batch_execute(commands, queries)` or `context-mode_ctx_execute(language: "shell", code: "...")`
 
-On startup, the proxy creates/updates `%USERPROFILE%\.opencode\opencode.json` with:
+### File reading (for analysis)
+Reading to **edit** → reading correct. Reading to **analyze/explore/summarize** → `context-mode_ctx_execute_file(path, language, code)`.
 
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "commandcode": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Command Code Proxy",
-      "options": {
-        "baseURL": "http://localhost:3000/v1"
-      },
-      "models": {
-        "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro" },
-        "deepseek/deepseek-v4-flash": { "name": "DeepSeek V4 Flash" },
-        "MiniMaxAI/MiniMax-M2.7": { "name": "MiniMax M2.7" },
-        "Qwen/Qwen3.6-Plus": { "name": "Qwen 3.6 Plus" },
-        "zai-org/GLM-5.1": { "name": "GLM 5.1" },
-        "moonshotai/Kimi-K2.6": { "name": "Kimi K2.6" }
-      }
-    }
-  }
-}
-```
+### grep / search (large results)
+Use `context-mode_ctx_execute(language: "shell", code: "grep ...")` in sandbox.
 
-This allows opencode users to connect via `/connect` command without manual configuration.
+## Tool selection
 
-## Environment Variables
+0. **MEMORY**: `context-mode_ctx_search(sort: "timeline")` — after resume, check prior context before asking user.
+1. **GATHER**: `context-mode_ctx_batch_execute(commands, queries)` — runs all commands, auto-indexes, returns search. ONE call replaces 30+. Each command: `{label: "header", command: "..."}`.
+2. **FOLLOW-UP**: `context-mode_ctx_search(queries: ["q1", "q2", ...])` — all questions as array, ONE call (default relevance mode).
+3. **PROCESSING**: `context-mode_ctx_execute(language, code)` | `context-mode_ctx_execute_file(path, language, code)` — sandbox, only stdout enters context.
+4. **WEB**: `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)` — raw HTML never enters context.
+5. **INDEX**: `context-mode_ctx_index(content, source)` — store in FTS5 for later search.
 
-```env
-COMMAND_CODE_API_KEY=    # Required: your Command Code API key
-COMMAND_CODE_API_URL=    # Default: https://api.commandcode.ai
-COMMAND_CODE_CLI_VERSION= # Default: 0.26.24
-PROXY_PORT=              # Default: 3000
-```
+## Parallel I/O batches
 
-## Running
+For multi-URL fetches or multi-API calls, **always** include `concurrency: N` (1-8):
 
-```cmd
-set COMMAND_CODE_API_KEY=your_key_here
-bun run proxy.js
-```
+- `context-mode_ctx_batch_execute(commands: [3+ network commands], concurrency: 5)` — gh, curl, dig, docker inspect, multi-region cloud queries
+- `context-mode_ctx_fetch_and_index(requests: [{url, source}, ...], concurrency: 5)` — multi-URL batch fetch
 
-Or use `start.cmd` which handles cleanup automatically.
+**Use concurrency 4-8** for I/O-bound work (network calls, API queries). **Keep concurrency 1** for CPU-bound (npm test, build, lint) or commands sharing state (ports, lock files, same-repo writes).
 
-## Command Code API Notes
+GitHub API rate-limit: cap at 4 for `gh` calls.
 
-### Request Format
+## Output
 
-```json
-{
-  "config": {
-    "workingDir": "C:\\...",
-    "date": "2026-05-23",
-    "environment": "win32-x64",
-    "structure": [],
-    "isGitRepo": false,
-    "currentBranch": "main",
-    "mainBranch": "main",
-    "gitStatus": "",
-    "recentCommits": []
-  },
-  "memory": "",
-  "taste": "",
-  "skills": null,
-  "permissionMode": "standard",
-  "params": {
-    "model": "deepseek/deepseek-v4-flash",
-    "messages": [...],
-    "tools": [...],
-    "system": "",
-    "max_tokens": 4096,
-    "temperature": 0.3,
-    "stream": true
-  },
-  "threadId": "uuid-v4"
-}
-```
+Write artifacts to FILES — never inline. Return: file path + 1-line description.
+Descriptive source labels for `search(source: "label")`.
 
-### Response Events (SSE)
+## Session Continuity
 
-- `text-delta` — text content chunk (use `.text` field)
-- `tool-input-start/delta/end` — incremental tool input building
-- `tool-call` — completed tool call (use `.toolCallId`, `.toolName`, `.input`)
-- `finish` / `finish-step` — final response with usage
-- `error` — upstream error in SSE format
+Skills, roles, and decisions persist for the entire session. Do not abandon them as the conversation grows.
 
-### Message Conversion
+## Memory
 
-**OpenAI → Command Code:**
-- `system` → extracted to `params.system`
-- `user` → `{role:'user', content: 'text'}`
-- `assistant` with `tool_calls` → `{role:'assistant', content:[], tool_calls:[...]}`
-- `tool` role → `{role:'user', content: 'tool result as string'}`
+Session history is persistent and searchable. On resume, search BEFORE asking the user:
 
-**Tool result must be plain string** — API rejects array content for tool role messages.
+| Need | Command |
+|------|---------|
+| What did we decide? | `context-mode_ctx_search(queries: ["decision"], source: "decision", sort: "timeline")` |
+| What constraints exist? | `context-mode_ctx_search(queries: ["constraint"], source: "constraint")` |
 
-### Tool Call Flow
+DO NOT ask "what were we working on?" — SEARCH FIRST.
+If search returns 0 results, proceed as a fresh session.
 
-1. Assistant message includes `tool_calls` array
-2. Tool result sent as user message with plain string content
-3. API responds with final text
+## ctx commands
 
-## Supported Models
+| Command | Action |
+|---------|--------|
+| `ctx stats` | Call `stats` MCP tool, display full output verbatim |
+| `ctx doctor` | Call `doctor` MCP tool, run returned shell command, display as checklist |
+| `ctx upgrade` | Call `upgrade` MCP tool, run returned shell command, display as checklist |
+| `ctx purge` | Call `purge` MCP tool with confirm: true. Warns before wiping knowledge base. |
 
-- `deepseek/deepseek-v4-pro` — DeepSeek Pro
-- `deepseek/deepseek-v4-flash` — DeepSeek Flash (fast)
-- `MiniMaxAI/MiniMax-M2.7` — MiniMax M2.7
-- `Qwen/Qwen3.6-Plus` — Qwen 3.6 Plus
-- `zai-org/GLM-5.1` — GLM 5.1
-- `moonshotai/Kimi-K2.6` — Kimi K2.6
-
-## Known Issues
-
-1. **Message content array handling** — Some OpenAI clients send content as array with `{type:'text',text:'...'}` format. The proxy converts this to plain string.
-
-2. **Tool choice** — Only `"auto"` and `"none"` supported. Forced tool selection returns error.
-
-3. **Stream options** — `stream_options.include_usage` partially implemented (usage in final chunk only).
-
-4. **Model validation** — No model allowlist enforcement. Unknown models passed upstream.
-
-## Reference
-
-- **Original bridge**: https://github.com/yelixir-dev/commandcode-bridge
-- **Command Code API docs**: https://commandcode.ai/docs
-- **OpenAI Chat API**: https://platform.openai.com/docs/api-reference/chat
+After /clear or /compact: knowledge base and session stats preserved. Use `ctx purge` to start fresh.

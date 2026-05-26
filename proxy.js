@@ -7,7 +7,8 @@ const crypto = require('crypto');
 const DEFAULT_BASE = process.env.COMMAND_CODE_API_URL || 'https://api.commandcode.ai';
 const DEFAULT_CLI_VER = process.env.COMMAND_CODE_CLI_VERSION || '0.26.24';
 const DEFAULT_PORT = parseInt(process.env.PROXY_PORT || '3000', 10);
-const DEFAULT_BIND_HOST = '127.0.0.1';
+const DEFAULT_BIND_HOST = process.env.PROXY_BIND_HOST || '0.0.0.0';
+const PROXY_API_KEY = process.env.PROXY_API_KEY || '';
 const CONFIG_VERSION = 2;
 const DASHBOARD_FILE = path.join(process.cwd(), 'dashboard.html');
 const CONFIG_DIR = process.env.PROXY_CONFIG_DIR
@@ -44,10 +45,10 @@ const PROVIDER_DEFAULTS = {
     validationPath: '/models',
   },
   chatgpt: {
-    label: 'ChatGPT OAuth',
-    baseUrl: '',
-    authType: 'oauth',
-    validationPath: '',
+    label: 'ChatGPT (OpenAI OAuth)',
+    baseUrl: 'https://api.openai.com/v1',
+    authType: 'bearer',
+    validationPath: '/models',
   },
   anthropic: {
     label: 'Anthropic',
@@ -72,12 +73,72 @@ const PROVIDER_DEFAULTS = {
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     authType: 'bearer',
-    authHeaders: () => ({ 'HTTP-Referer': `http://localhost:${getPort()}` }),
+    authHeaders: () => ({ 'HTTP-Referer': `http://${DEFAULT_BIND_HOST === '0.0.0.0' ? 'localhost' : DEFAULT_BIND_HOST}:${getPort()}` }),
     validationPath: '/models',
   },
   nvidia: {
     label: 'NVIDIA',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  wafer: {
+    label: 'Wafer',
+    baseUrl: 'https://api.wafer.ai/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  deepseek: {
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  azure: {
+    label: 'Azure OpenAI',
+    baseUrl: '',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  cohere: {
+    label: 'Cohere',
+    baseUrl: 'https://api.cohere.com/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  mistral: {
+    label: 'Mistral AI',
+    baseUrl: 'https://api.mistral.ai/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  ollama: {
+    label: 'Ollama',
+    baseUrl: 'http://localhost:11434/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  xai: {
+    label: 'xAI (Grok)',
+    baseUrl: 'https://api.x.ai/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  perplexity: {
+    label: 'Perplexity',
+    baseUrl: 'https://api.perplexity.ai',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  together: {
+    label: 'Together AI',
+    baseUrl: 'https://api.together.xyz/v1',
+    authType: 'bearer',
+    validationPath: '/models',
+  },
+  fireworks: {
+    label: 'Fireworks AI',
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
     authType: 'bearer',
     validationPath: '/models',
   },
@@ -87,7 +148,53 @@ const PROVIDER_DEFAULTS = {
     authType: 'bearer',
     validationPath: '/models',
   },
+  nousresearch: {
+    label: 'Nous Research',
+    baseUrl: 'https://portal.nousresearch.com/api/v1',
+    authType: 'oauth',
+    authUrl: 'https://portal.nousresearch.com/oauth/authorize',
+    tokenUrl: 'https://portal.nousresearch.com/oauth/token',
+    scopes: 'openid profile',
+    validationPath: '/models',
+  },
 };
+
+let customProviders = {};
+
+// Simple in-memory response cache for non-streaming identical requests
+const responseCache = new Map();
+const CACHE_MAX_SIZE = 100;
+const CACHE_TTL_MS = 30000; // 30 seconds
+
+function getCacheKey(reqBody) {
+  // Cache key based on model, messages, temperature, max_tokens
+  const key = JSON.stringify({
+    model: reqBody.model,
+    messages: reqBody.messages,
+    temperature: reqBody.temperature,
+    max_tokens: reqBody.max_tokens,
+    top_p: reqBody.top_p,
+  });
+  return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+function getCachedResponse(cacheKey) {
+  const entry = responseCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    responseCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCachedResponse(cacheKey, data) {
+  if (responseCache.size >= CACHE_MAX_SIZE) {
+    const firstKey = responseCache.keys().next().value;
+    responseCache.delete(firstKey);
+  }
+  responseCache.set(cacheKey, { timestamp: Date.now(), data });
+}
 
 const SUPPORTED_CREDENTIAL_TYPES = ['api_key', 'bearer_token', 'oauth_token_bundle'];
 const SUPPORTED_STATUSES = ['active', 'inactive'];
@@ -175,10 +282,30 @@ function sendError(res, statusCode, message, type = 'invalid_request_error', ext
   });
 }
 
+function htmlEscape(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let totalLength = 0;
+    req.on('data', (chunk) => {
+      totalLength += chunk.length;
+      if (totalLength > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
@@ -191,6 +318,20 @@ async function parseJsonBody(req, res) {
   } catch (error) {
     sendError(res, 400, 'Invalid JSON body');
     return null;
+  }
+}
+
+async function parseFormBody(req) {
+  try {
+    const body = await readBody(req);
+    const params = new URLSearchParams(body);
+    const result = {};
+    for (const [key, value] of params) {
+      result[key] = value;
+    }
+    return result;
+  } catch (_) {
+    return {};
   }
 }
 
@@ -348,6 +489,8 @@ function sanitizeCredential(credential) {
     updatedAt: credential.updatedAt,
     createdAt: credential.createdAt,
     hasSecret: Boolean(getSecretPayload(credential.id)),
+    priority: credential.priority ?? 0,
+    tools: safeArray(credential.tools),
   };
 }
 
@@ -360,6 +503,7 @@ function defaultConfig() {
     cliVersion: DEFAULT_CLI_VER,
     credentials: [],
     models: defaultModels(),
+    providers: {},
   };
 }
 
@@ -373,14 +517,14 @@ function normalizeModel(model) {
 }
 
 function inferCredentialType(provider, authType) {
-  if (provider === 'chatgpt' || authType === 'oauth') return 'oauth_token_bundle';
+  if (authType === 'oauth') return 'oauth_token_bundle';
   if (authType === 'bearer') return 'bearer_token';
   return 'api_key';
 }
 
-function normalizeCredentialMeta(meta) {
-  const provider = PROVIDER_DEFAULTS[meta.provider] ? meta.provider : 'other';
-  const defaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.other;
+function normalizeCredentialMeta(meta, knownProviders = {}) {
+  const provider = (PROVIDER_DEFAULTS[meta.provider] || knownProviders[meta.provider]) ? meta.provider : 'other';
+  const defaults = getProviderDefaults(provider, knownProviders);
   const credentialType = SUPPORTED_CREDENTIAL_TYPES.includes(meta.credentialType)
     ? meta.credentialType
     : inferCredentialType(provider, meta.authType || defaults.authType);
@@ -412,21 +556,25 @@ function normalizeCredentialMeta(meta) {
     usage,
     createdAt: meta.createdAt || nowIso(),
     updatedAt: meta.updatedAt || nowIso(),
+    priority: Number.isInteger(Number(meta.priority)) ? Number(meta.priority) : 0,
+    tools: safeArray(meta.tools).map(t => String(t).trim().toLowerCase()).filter(Boolean),
   };
 }
 
 function saveConfig(config) {
   ensureConfigDir();
   const { apiKeys, ...configWithoutLegacyKeys } = config;
+  const knownProviders = { ...PROVIDER_DEFAULTS, ...(config.providers || {}) };
   const safeConfig = {
     ...configWithoutLegacyKeys,
     version: CONFIG_VERSION,
     bindHost: DEFAULT_BIND_HOST,
     credentials: safeArray(config.credentials).map((credential) => {
-      const normalized = normalizeCredentialMeta(credential);
+      const normalized = normalizeCredentialMeta(credential, knownProviders);
       return normalized;
     }),
     models: safeArray(config.models).map(normalizeModel).filter((model) => model.id && model.name),
+    providers: config.providers && typeof config.providers === 'object' ? config.providers : {},
   };
   fs.writeFileSync(CONFIG_FILE, stableJson(safeConfig));
   return safeConfig;
@@ -452,8 +600,9 @@ function loadConfig() {
   };
 
   let migrated = false;
+  const knownProviders = { ...PROVIDER_DEFAULTS, ...(merged.providers || {}) };
   let credentials = safeArray(merged.credentials).map((credential) => {
-    const normalized = normalizeCredentialMeta(credential);
+    const normalized = normalizeCredentialMeta(credential, knownProviders);
     if (credential && typeof credential === 'object' && (credential.value || credential.secretValue || credential.accessToken || credential.refreshToken)) {
       putSecretPayload(normalized.id, {
         secretValue: credential.secretValue || credential.value || credential.accessToken || '',
@@ -467,8 +616,8 @@ function loadConfig() {
 
   if (Array.isArray(rawConfig.apiKeys) && rawConfig.apiKeys.length > 0) {
     for (const legacyKey of rawConfig.apiKeys) {
-      const provider = PROVIDER_DEFAULTS[legacyKey.provider] ? legacyKey.provider : 'commandcode';
-      const defaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.commandcode;
+      const provider = (PROVIDER_DEFAULTS[legacyKey.provider] || knownProviders[legacyKey.provider]) ? legacyKey.provider : 'commandcode';
+      const defaults = getProviderDefaults(provider, knownProviders);
       const credential = normalizeCredentialMeta({
         id: randomUUID(),
         name: legacyKey.name,
@@ -506,7 +655,7 @@ function loadConfig() {
   return normalized;
 }
 
-let proxyConfig = loadConfig();
+var proxyConfig = loadConfig();
 
 function getApiBase() {
   return normalizeBaseUrl(proxyConfig.apiUrl || DEFAULT_BASE) || DEFAULT_BASE;
@@ -531,7 +680,10 @@ function sanitizeConfigForClient(config) {
   };
 }
 
-function getProviderDefaults(provider) {
+function getProviderDefaults(provider, knownProviders = null) {
+  const allProviders = knownProviders || { ...PROVIDER_DEFAULTS, ...(typeof proxyConfig !== 'undefined' && proxyConfig ? proxyConfig.providers : {}) };
+  const custom = allProviders[provider];
+  if (custom) return custom;
   return PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.other;
 }
 
@@ -544,6 +696,23 @@ function getModelProvider(modelId) {
   return match?.provider || 'commandcode';
 }
 
+function detectClientTool(req) {
+  const source = (req.headers['x-source'] || req.headers['x-tool'] || '').toLowerCase().trim();
+  if (source) return source;
+  const ua = (req.headers['user-agent'] || '').toLowerCase();
+  const patterns = {
+    openclaw: /openclaw/i,
+    hermes: /hermes/i,
+    cursor: /cursor/i,
+    vscode: /vscode|vs-code|copilot/i,
+    'claude-desktop': /claude-desktop/i,
+  };
+  for (const [tool, regex] of Object.entries(patterns)) {
+    if (regex.test(ua)) return tool;
+  }
+  return null;
+}
+
 
 
 function getEligibleCredentials(provider, modelId) {
@@ -554,42 +723,40 @@ function getEligibleCredentials(provider, modelId) {
     .filter((credential) => Boolean(getCredentialSecretString(credential)));
 }
 
-function getBestCredential(provider, modelId) {
-  const eligible = getEligibleCredentials(provider, modelId);
-  if (eligible.length === 0) {
-    if (provider === 'commandcode' && process.env.COMMAND_CODE_API_KEY) {
-      return {
-        id: 'env-commandcode',
-        provider: 'commandcode',
-        authType: 'bearer',
-        baseUrl: getApiBase(),
-        getSecret: () => process.env.COMMAND_CODE_API_KEY,
-      };
-    }
-    return null;
+function getGlobalOrderedCredentials(modelId, toolId) {
+  const eligible = safeArray(proxyConfig.credentials)
+    .filter(cred => cred.status === 'active')
+    .filter(cred => Boolean(getCredentialSecretString(cred)))
+    .filter(cred => safeArray(cred.models).length === 0 || cred.models.includes(modelId))
+    .filter(cred => {
+      const tools = safeArray(cred.tools);
+      if (tools.length === 0) return true;
+      if (!toolId) return true;
+      return tools.includes(toolId);
+    });
+
+  if (eligible.length === 0 && toolId) {
+    const unbound = safeArray(proxyConfig.credentials)
+      .filter(cred => cred.status === 'active')
+      .filter(cred => Boolean(getCredentialSecretString(cred)))
+      .filter(cred => safeArray(cred.models).length === 0 || cred.models.includes(modelId))
+      .filter(cred => safeArray(cred.tools).length === 0);
+    return sortByPriority(unbound);
   }
 
-  // Sort by usage ratio then requestCount — least saturated key goes first
-  eligible.sort((a, b) => {
-    const aRatio = getUsageRatio(a);
-    const bRatio = getUsageRatio(b);
-    if (Math.abs(aRatio - bRatio) > 0.001) return aRatio - bRatio;
-    const aCount = (a.usage?.requestCount || 0);
-    const bCount = (b.usage?.requestCount || 0);
-    if (aCount !== bCount) return aCount - bCount;
-    const aLast = a.usage?.lastUsed ? new Date(a.usage.lastUsed).getTime() : 0;
-    const bLast = b.usage?.lastUsed ? new Date(b.usage.lastUsed).getTime() : 0;
-    return aLast - bLast;
-  });
+  return sortByPriority(eligible);
+}
 
-  const selected = eligible[0];
-  const defaults = getProviderDefaults(selected.provider);
-  return {
-    ...selected,
-    authType: selected.authType || defaults.authType || 'bearer',
-    baseUrl: normalizeBaseUrl(selected.baseUrl || defaults.baseUrl || ''),
-    getSecret: () => getCredentialSecretString(selected),
-  };
+function sortByPriority(credentials) {
+  credentials.sort((a, b) => {
+    const ap = Number(a.priority) || 0;
+    const bp = Number(b.priority) || 0;
+    if (bp !== ap) return bp - ap;
+    const aIdx = safeArray(proxyConfig.credentials).indexOf(a);
+    const bIdx = safeArray(proxyConfig.credentials).indexOf(b);
+    return aIdx - bIdx;
+  });
+  return credentials;
 }
 
 function getUsageRatio(credential) {
@@ -597,6 +764,52 @@ function getUsageRatio(credential) {
   if (limit <= 0) return 0;
   const used = Number(credential.usage?.requestCount || credential.usage?.totalTokens || 0);
   return used / limit;
+}
+
+async function refreshOAuthToken(credential) {
+  const secretPayload = getSecretPayload(credential.id);
+  if (!secretPayload || !secretPayload.refreshToken) return null;
+  const defaults = getProviderDefaults(credential.provider);
+  const tokenUrl = defaults.tokenUrl || `${defaults.baseUrl}/oauth/token`;
+  try {
+    const resp = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: secretPayload.refreshToken,
+        client_id: credential.clientId || '',
+        client_secret: credential.clientSecret || '',
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const newPayload = {
+      ...secretPayload,
+      accessToken: data.access_token,
+      secretValue: data.access_token,
+      refreshToken: data.refresh_token || secretPayload.refreshToken,
+      expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
+    };
+    putSecretPayload(credential.id, newPayload);
+    return data.access_token;
+  } catch (e) {
+    return null;
+  }
+}
+
+function isTokenExpired(credential) {
+  const secretPayload = getSecretPayload(credential.id);
+  if (!secretPayload || !secretPayload.expiresAt) return false;
+  return Date.now() >= secretPayload.expiresAt - 60000; // 1 min buffer
+}
+
+async function getCredentialSecretWithRefresh(credential) {
+  if (credential.credentialType === 'oauth_token_bundle' && isTokenExpired(credential)) {
+    const refreshed = await refreshOAuthToken(credential);
+    if (refreshed) return refreshed;
+  }
+  return getCredentialSecretString(credential);
 }
 
 function buildAuthHeaders(authType, secretValue) {
@@ -683,6 +896,175 @@ function convertToolsCC(tools) {
     .filter(Boolean);
 }
 
+// Format Conversion: OpenAI ↔ Claude Messages API
+function convertOpenAIToClaudeMessages(reqBody) {
+  const messages = safeArray(reqBody.messages);
+  const systemMessage = messages.find((m) => m.role === 'system');
+  const claudeMessages = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => {
+      if (m.role === 'tool') {
+        return {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: m.content }],
+        };
+      }
+      if (m.role === 'assistant' && m.tool_calls) {
+        return {
+          role: 'assistant',
+          content: m.tool_calls.map((tc) => ({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input: typeof tc.function.arguments === 'string' ? parseMaybeJson(tc.function.arguments) : tc.function.arguments,
+          })),
+        };
+      }
+      return {
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : m.content?.map?.((c) => c.text || c).join('') || '',
+      };
+    });
+
+  const tools = safeArray(reqBody.tools)
+    .filter((t) => t.type === 'function')
+    .map((t) => ({
+      name: t.function.name,
+      description: t.function.description || '',
+      input_schema: t.function.parameters || { type: 'object', properties: {} },
+    }));
+
+  return {
+    model: reqBody.model,
+    max_tokens: reqBody.max_tokens || 4096,
+    temperature: reqBody.temperature ?? 0.7,
+    top_p: reqBody.top_p,
+    system: systemMessage?.content || undefined,
+    messages: claudeMessages,
+    tools: tools.length > 0 ? tools : undefined,
+    stream: reqBody.stream ?? true,
+  };
+}
+
+function convertClaudeStreamToOpenAI(line, modelId) {
+  const payload = line.replace(/^data: /, '');
+  const event = parseMaybeJson(payload);
+  if (!event) return null;
+  if (event.type === 'content_block_delta' && event.delta?.text) {
+    return buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { content: event.delta.text }, null);
+  }
+  if (event.type === 'message_stop') {
+    return buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, {}, 'stop');
+  }
+  if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+    return buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, {
+      tool_calls: [{ index: 0, id: event.content_block.id, type: 'function', function: { name: event.content_block.name, arguments: '' } }],
+    }, null);
+  }
+  return null;
+}
+
+function convertClaudeResponseToOpenAI(claudeRes, modelId) {
+  const content = claudeRes.content || [];
+  const textBlocks = content.filter((c) => c.type === 'text');
+  const toolBlocks = content.filter((c) => c.type === 'tool_use');
+
+  return {
+    id: `chatcmpl-${randomUUID()}`,
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: modelId,
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: textBlocks.map((c) => c.text).join('') || null,
+        tool_calls: toolBlocks.length > 0 ? toolBlocks.map((tc, i) => ({
+          index: i,
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.input || {}) },
+        })) : undefined,
+      },
+      finish_reason: claudeRes.stop_reason || 'stop',
+    }],
+    usage: {
+      prompt_tokens: claudeRes.usage?.input_tokens || 0,
+      completion_tokens: claudeRes.usage?.output_tokens || 0,
+      total_tokens: (claudeRes.usage?.input_tokens || 0) + (claudeRes.usage?.output_tokens || 0),
+    },
+  };
+}
+
+// Format Conversion: OpenAI ↔ Google Gemini
+function convertOpenAIToGemini(reqBody) {
+  const messages = safeArray(reqBody.messages);
+  const systemMessage = messages.find((m) => m.role === 'system');
+  const contents = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
+    }));
+
+  const tools = safeArray(reqBody.tools)
+    .filter((t) => t.type === 'function')
+    .map((t) => ({
+      name: t.function.name,
+      description: t.function.description || '',
+      parameters: t.function.parameters || { type: 'object', properties: {} },
+    }));
+
+  const body = {
+    contents,
+    generationConfig: {
+      maxOutputTokens: reqBody.max_tokens || 4096,
+      temperature: reqBody.temperature ?? 0.7,
+      topP: reqBody.top_p ?? 0.95,
+    },
+  };
+  if (systemMessage) body.systemInstruction = { parts: [{ text: systemMessage.content }] };
+  if (tools.length > 0) body.tools = [{ functionDeclarations: tools }];
+  return body;
+}
+
+function convertGeminiResponseToOpenAI(geminiRes, modelId) {
+  const candidate = geminiRes.candidates?.[0];
+  const content = candidate?.content;
+  const parts = content?.parts || [];
+  const text = parts.filter((p) => p.text).map((p) => p.text).join('');
+  const functionCalls = parts.filter((p) => p.functionCall);
+
+  return {
+    id: `chatcmpl-${randomUUID()}`,
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: modelId,
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: text || null,
+        tool_calls: functionCalls.length > 0 ? functionCalls.map((fc, i) => ({
+          index: i,
+          id: fc.functionCall?.name || `call_${i}`,
+          type: 'function',
+          function: {
+            name: fc.functionCall?.name || '',
+            arguments: JSON.stringify(fc.functionCall?.args || {}),
+          },
+        })) : undefined,
+      },
+      finish_reason: candidate?.finishReason === 'STOP' ? 'stop' : 'stop',
+    }],
+    usage: {
+      prompt_tokens: geminiRes.usageMetadata?.promptTokenCount || 0,
+      completion_tokens: geminiRes.usageMetadata?.candidatesTokenCount || 0,
+      total_tokens: (geminiRes.usageMetadata?.promptTokenCount || 0) + (geminiRes.usageMetadata?.candidatesTokenCount || 0),
+    },
+  };
+}
+
 function buildOpenAIChunk(id, model, index, delta, finishReason) {
   return {
     id,
@@ -694,6 +1076,7 @@ function buildOpenAIChunk(id, model, index, delta, finishReason) {
 }
 
 async function readAllEvents(resp) {
+  if (!resp.body) return [];
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -839,7 +1222,9 @@ async function validateCredentialRecord(credential) {
 }
 
 function normalizeCredentialInput(input, existingCredential = null) {
-  const provider = PROVIDER_DEFAULTS[input.provider] ? input.provider : (existingCredential?.provider || 'commandcode');
+  const provider = (PROVIDER_DEFAULTS[input.provider] || (proxyConfig && proxyConfig.providers && proxyConfig.providers[input.provider]))
+    ? input.provider
+    : (existingCredential?.provider || 'commandcode');
   const defaults = getProviderDefaults(provider);
   const credentialType = SUPPORTED_CREDENTIAL_TYPES.includes(input.credentialType)
     ? input.credentialType
@@ -855,6 +1240,11 @@ function normalizeCredentialInput(input, existingCredential = null) {
   const monthlyLimit = isFinite(Number(input.monthlyLimit ?? existingCredential?.monthlyLimit))
     ? Number(input.monthlyLimit ?? existingCredential?.monthlyLimit)
     : (existingCredential?.monthlyLimit || 0);
+  const priority = Number.isInteger(Number(input.priority ?? existingCredential?.priority))
+    ? Number(input.priority ?? existingCredential?.priority)
+    : (existingCredential?.priority || 0);
+  const tools = safeArray(input.tools ?? existingCredential?.tools)
+    .map(t => String(t).trim().toLowerCase()).filter(Boolean);
 
   if (!name) {
     throw new Error('Credential name is required.');
@@ -871,6 +1261,7 @@ function normalizeCredentialInput(input, existingCredential = null) {
     if (!accessToken && !existingCredential) {
       throw new Error('Access token is required for OAuth token bundles.');
     }
+    const providers = { ...PROVIDER_DEFAULTS, ...(proxyConfig && proxyConfig.providers || {}) };
     return {
       credential: normalizeCredentialMeta({
         ...(existingCredential || {}),
@@ -885,8 +1276,10 @@ function normalizeCredentialInput(input, existingCredential = null) {
         notes,
         expiresAt,
         monthlyLimit,
+        priority,
+        tools,
         updatedAt: nowIso(),
-      }),
+      }, providers),
       secretPayload: {
         accessToken,
         refreshToken,
@@ -903,6 +1296,7 @@ function normalizeCredentialInput(input, existingCredential = null) {
     throw new Error('Secret value is required.');
   }
 
+  const providers = { ...PROVIDER_DEFAULTS, ...(proxyConfig && proxyConfig.providers || {}) };
   return {
     credential: normalizeCredentialMeta({
       ...(existingCredential || {}),
@@ -917,8 +1311,10 @@ function normalizeCredentialInput(input, existingCredential = null) {
       notes,
       expiresAt,
       monthlyLimit,
+      priority,
+      tools,
       updatedAt: nowIso(),
-    }),
+    }, providers),
     secretPayload: {
       secretValue,
     },
@@ -962,8 +1358,14 @@ async function handleDashboard(req, res) {
     sendError(res, 404, 'Dashboard not found', 'not_found_error');
     return;
   }
-  res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(fs.readFileSync(DASHBOARD_FILE));
+  let html = fs.readFileSync(DASHBOARD_FILE, 'utf8');
+  if (PROXY_API_KEY) {
+    const safeKey = PROXY_API_KEY.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/</g, '\\x3c');
+    const inject = `<script>window.PROXY_API_KEY='${safeKey}';</script>`;
+    html = html.replace('</head>', `${inject}</head>`);
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' });
+  res.end(html);
 }
 
 async function handleGetConfig(req, res) {
@@ -1055,6 +1457,26 @@ async function handleDeleteCredential(req, res) {
   sendJson(res, 200, { success: true });
 }
 
+async function handleReorderCredentials(req, res) {
+  const input = await parseJsonBody(req, res);
+  if (!input) return;
+  const { orderedIds } = input;
+  if (!Array.isArray(orderedIds)) {
+    return sendError(res, 400, 'orderedIds (string array) is required', 'invalid_request_error');
+  }
+  const credentials = safeArray(proxyConfig.credentials);
+  const maxPriority = orderedIds.length;
+  orderedIds.forEach((id, index) => {
+    const cred = credentials.find(c => c.id === id);
+    if (cred) {
+      cred.priority = maxPriority - index;
+      cred.updatedAt = nowIso();
+    }
+  });
+  proxyConfig = saveConfig(proxyConfig);
+  sendJson(res, 200, { success: true });
+}
+
 async function handleRevealCredential(req, res) {
   const input = await parseJsonBody(req, res);
   if (!input) return;
@@ -1111,6 +1533,366 @@ async function handleValidateAllCredentials(req, res) {
   });
 }
 
+// OAuth Server: Proxy acts as the OAuth provider that ChatGPT/Apps connect to
+async function handleOAuthAuthorize(req, res, provider, parsedUrl) {
+  const clientId = parsedUrl.searchParams.get('client_id') || '';
+  const redirectUri = parsedUrl.searchParams.get('redirect_uri') || '';
+  const scope = parsedUrl.searchParams.get('scope') || 'openid profile';
+  const state = parsedUrl.searchParams.get('state') || '';
+
+  if (!redirectUri) {
+    sendError(res, 400, 'Missing redirect_uri parameter');
+    return;
+  }
+
+  // Generate authorization code
+  const code = crypto.randomBytes(32).toString('hex');
+
+  // Store pending authorization
+  if (!proxyConfig.oauthPending) proxyConfig.oauthPending = {};
+  proxyConfig.oauthPending[code] = {
+    provider,
+    clientId,
+    redirectUri,
+    scope,
+    state,
+    createdAt: Date.now(),
+  };
+  saveConfig(proxyConfig);
+
+  // Serve approval page
+  const escProvider = htmlEscape(provider);
+  const escScope = htmlEscape(scope);
+  const escState = htmlEscape(state);
+  const escCode = htmlEscape(code);
+  const escRedirectUri = htmlEscape(redirectUri);
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Authorize ${escProvider}</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0a1512;color:#e8f5ee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.card{background:#111f1b;border:1px solid #1a2e28;border-radius:12px;padding:32px;max-width:420px;width:90%}
+h1{margin:0 0 8px;font-size:20px}
+p{color:#8da396;margin:0 0 24px}
+.scope{background:#0a1512;border:1px solid #1a2e28;border-radius:6px;padding:12px;margin-bottom:24px}
+.scope li{color:#8da396;margin:4px 0}
+.btn{display:block;width:100%;padding:12px;border-radius:6px;border:none;cursor:pointer;font-size:14px;margin-bottom:8px}
+.approve{background:#2d6a4f;color:#fff}
+.deny{background:transparent;color:#8da396;border:1px solid #1a2e28}
+</style></head>
+<body>
+<div class="card">
+<h1>Authorize ${escProvider}</h1>
+<p>An application is requesting access to your proxy credentials for <strong>${escProvider}</strong>.</p>
+<div class="scope">
+<strong>Scopes requested:</strong>
+<ul><li>${escScope.split(' ').join('</li><li>')}</li></ul>
+</div>
+<form method="POST" action="/oauth/approve/${escProvider}">
+<input type="hidden" name="code" value="${escCode}">
+<input type="hidden" name="state" value="${escState}">
+<button class="btn approve" type="submit">Approve Access</button>
+</form>
+<a href="${escRedirectUri}?error=access_denied&amp;state=${encodeURIComponent(state)}">
+<button class="btn deny">Deny</button>
+</a>
+</div>
+</body></html>`;
+
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(html);
+}
+
+async function handleOAuthApprove(req, res, provider, parsedUrl) {
+  const body = await parseFormBody(req);
+  const code = body.code;
+  const state = body.state;
+
+  const pending = proxyConfig.oauthPending?.[code];
+  if (!pending || pending.provider !== provider) {
+    sendError(res, 400, 'Invalid or expired authorization code');
+    return;
+  }
+
+  // Mark as approved
+  pending.approved = true;
+  pending.approvedAt = Date.now();
+  saveConfig(proxyConfig);
+
+  // Redirect back to client with code
+  const redirectUri = new URL(pending.redirectUri);
+  redirectUri.searchParams.set('code', code);
+  if (state) redirectUri.searchParams.set('state', state);
+
+  res.writeHead(302, { Location: redirectUri.toString() });
+  res.end();
+}
+
+async function handleOAuthToken(req, res) {
+  const body = await parseFormBody(req);
+  const grantType = body.grant_type;
+
+  if (grantType === 'authorization_code') {
+    const code = body.code;
+    const pending = proxyConfig.oauthPending?.[code];
+
+    if (!pending || !pending.approved) {
+      sendError(res, 400, 'Invalid or unapproved authorization code');
+      return;
+    }
+
+    // Generate tokens
+    const accessToken = crypto.randomBytes(32).toString('hex');
+    const refreshToken = crypto.randomBytes(32).toString('hex');
+    const expiresIn = 3600;
+
+    // Create credential
+    const credentialId = `oauth_${pending.provider}_${Date.now()}`;
+    const credential = {
+      id: credentialId,
+      name: `${pending.provider} OAuth App (${new Date().toISOString().split('T')[0]})`,
+      provider: pending.provider,
+      status: 'active',
+      credentialType: 'oauth_token_bundle',
+      authType: 'oauth',
+      baseUrl: getProviderDefaults(pending.provider).baseUrl,
+      models: [],
+      tags: ['oauth', 'app'],
+      notes: `OAuth app: client_id=${pending.clientId}, scope=${pending.scope}`,
+      monthlyLimit: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      usage: { requestCount: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0, lastUsed: null },
+    };
+
+    proxyConfig.credentials = safeArray(proxyConfig.credentials);
+    proxyConfig.credentials.push(credential);
+
+    // Clean up pending
+    delete proxyConfig.oauthPending[code];
+    saveConfig(proxyConfig);
+
+    putSecretPayload(credentialId, {
+      accessToken,
+      secretValue: accessToken,
+      refreshToken,
+      expiresAt: Date.now() + expiresIn * 1000,
+    });
+
+    sendJson(res, 200, {
+      access_token: accessToken,
+      token_type: 'Bearer',
+      expires_in: expiresIn,
+      refresh_token: refreshToken,
+    });
+    return;
+  }
+
+  if (grantType === 'refresh_token') {
+    const refreshToken = body.refresh_token;
+    // Find credential by refresh token
+    const creds = safeArray(proxyConfig.credentials).filter(c => c.credentialType === 'oauth_token_bundle');
+    let matched = null;
+    for (const c of creds) {
+      const payload = getSecretPayload(c.id);
+      if (payload && payload.refreshToken === refreshToken) {
+        matched = c;
+        break;
+      }
+    }
+
+    if (!matched) {
+      sendError(res, 400, 'Invalid refresh token');
+      return;
+    }
+
+    const newAccess = crypto.randomBytes(32).toString('hex');
+    const newRefresh = crypto.randomBytes(32).toString('hex');
+    const expiresIn = 3600;
+
+    putSecretPayload(matched.id, {
+      ...getSecretPayload(matched.id),
+      accessToken: newAccess,
+      secretValue: newAccess,
+      refreshToken: newRefresh,
+      expiresAt: Date.now() + expiresIn * 1000,
+    });
+
+    sendJson(res, 200, {
+      access_token: newAccess,
+      token_type: 'Bearer',
+      expires_in: expiresIn,
+      refresh_token: newRefresh,
+    });
+    return;
+  }
+
+  sendError(res, 400, 'Unsupported grant_type');
+}
+
+// === OAuth Client Flow — Proxy logs INTO external providers ===
+
+async function handleOAuthClientLogin(req, res, provider, parsedUrl) {
+  const defaults = getProviderDefaults(provider);
+  if (!defaults.authUrl || !defaults.tokenUrl) {
+    return sendError(res, 400, `Provider "${provider}" does not support OAuth login. Add authUrl and tokenUrl to provider config.`);
+  }
+
+  const state = crypto.randomBytes(20).toString('hex');
+  const port = getPort();
+  const host = req.headers.host || `localhost:${port}`;
+  const callbackUrl = `http://${host}/oauth/client/callback`;
+
+  if (!proxyConfig.oauthClientStates) proxyConfig.oauthClientStates = {};
+  proxyConfig.oauthClientStates[state] = {
+    provider,
+    createdAt: Date.now(),
+  };
+  saveConfig(proxyConfig);
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: defaults.clientId || '',
+    redirect_uri: callbackUrl,
+    scope: defaults.scopes || 'openid profile',
+    state,
+  });
+
+  const redirectUrl = `${defaults.authUrl}?${params.toString()}`;
+  res.writeHead(302, { Location: redirectUrl });
+  res.end();
+}
+
+async function handleOAuthClientCallback(req, res, parsedUrl) {
+  const code = parsedUrl.searchParams.get('code');
+  const state = parsedUrl.searchParams.get('state');
+  const error = parsedUrl.searchParams.get('error');
+
+  if (error) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<html><body style="font-family:sans-serif;background:#0a0a0a;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh"><div><h1>OAuth Failed</h1><p>${htmlEscape(error)}: ${htmlEscape(parsedUrl.searchParams.get('error_description') || '')}</p></div></body></html>`);
+    return;
+  }
+
+  if (!code || !state) {
+    return sendError(res, 400, 'Missing code or state parameter');
+  }
+
+  const pending = proxyConfig.oauthClientStates?.[state];
+  if (!pending) {
+    return sendError(res, 400, 'Invalid or expired OAuth state');
+  }
+
+  const provider = pending.provider;
+  const defaults = getProviderDefaults(provider);
+  const port = getPort();
+  const host = req.headers.host || `localhost:${port}`;
+  const callbackUrl = `http://${host}/oauth/client/callback`;
+
+  // Exchange code for tokens
+  try {
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: callbackUrl,
+      client_id: defaults.clientId || '',
+      client_secret: defaults.clientSecret || '',
+    });
+
+    const tokenResp = await fetch(defaults.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+      body: tokenBody,
+    });
+
+    if (!tokenResp.ok) {
+      const errBody = await tokenResp.text().catch(() => 'Unknown error');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<html><body style="font-family:sans-serif;background:#0a0a0a;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh"><div><h1>Token Exchange Failed</h1><p>HTTP ${tokenResp.status}: ${htmlEscape(errBody.substring(0, 200))}</p></div></body></html>`);
+      return;
+    }
+
+    const tokenData = await tokenResp.json();
+    const accessToken = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token || '';
+    const expiresIn = tokenData.expires_in || 3600;
+
+    if (!accessToken) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><body style="font-family:sans-serif;background:#0a0a0a;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh"><div><h1>Token Missing</h1><p>No access_token in response.</p></div></body></html>');
+      return;
+    }
+
+    // Create credential
+    const credentialId = `oauth_client_${provider}_${Date.now()}`;
+    const credential = {
+      id: credentialId,
+      name: `${defaults.label} OAuth (${new Date().toISOString().split('T')[0]})`,
+      provider,
+      status: 'active',
+      credentialType: 'oauth_token_bundle',
+      authType: 'oauth',
+      baseUrl: defaults.baseUrl,
+      models: [],
+      labels: ['oauth'],
+      notes: `OAuth login to ${defaults.label}. ${refreshToken ? 'Refresh token available.' : 'No refresh token.'}`,
+      monthlyLimit: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      usage: { requestCount: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0, lastUsed: null },
+    };
+
+    proxyConfig.credentials = safeArray(proxyConfig.credentials);
+    proxyConfig.credentials.push(credential);
+    delete proxyConfig.oauthClientStates[state];
+    saveConfig(proxyConfig);
+
+    putSecretPayload(credentialId, {
+      accessToken,
+      secretValue: accessToken,
+      refreshToken,
+      expiresAt: expiresIn ? Date.now() + expiresIn * 1000 : null,
+    });
+
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Connected — ${htmlEscape(defaults.label)}</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0a1512;color:#e8f5ee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.card{background:#111f1b;border:1px solid #1a2e28;border-radius:12px;padding:32px;max-width:420px;width:90%;text-align:center}
+h1{font-size:22px;margin:0 0 8px}
+p{color:#8da396;margin:0 0 20px;font-size:0.95rem}
+.badge{display:inline-block;padding:4px 12px;border-radius:999px;background:rgba(72,182,125,0.14);color:#a6f2c7;font-size:0.8rem;margin-top:12px}
+</style></head>
+<body>
+<div class="card">
+<h1>Connected to ${htmlEscape(defaults.label)}</h1>
+<p>Your credential has been saved to the vault. You can close this window.</p>
+<span class="badge">${htmlEscape(credential.name)}</span>
+</div>
+</body></html>`);
+
+  } catch (err) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<html><body style="font-family:sans-serif;background:#0a0a0a;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh"><div><h1>OAuth Error</h1><p>${htmlEscape(err.message)}</p></div></body></html>`);
+  }
+}
+
+function handleOAuthClientCheck(req, res, parsedUrl) {
+  const provider = parsedUrl.searchParams.get('provider') || '';
+  const defaults = provider ? getProviderDefaults(provider) : null;
+  if (!defaults || !defaults.authUrl) {
+    sendJson(res, 200, { available: false });
+    return;
+  }
+  sendJson(res, 200, {
+    available: true,
+    provider: htmlEscape(provider),
+    label: defaults.label,
+    authUrl: defaults.authUrl,
+    scopes: defaults.scopes || 'openid profile',
+  });
+}
+
 async function handleGetModels(req, res) {
   sendJson(res, 200, { models: safeArray(proxyConfig.models).map(normalizeModel) });
 }
@@ -1130,15 +1912,79 @@ async function handleUpdateModels(req, res) {
 }
 
 async function handleGetProviders(req, res) {
+  const merged = { ...PROVIDER_DEFAULTS, ...(proxyConfig.providers || {}) };
   sendJson(res, 200, {
-    providers: Object.entries(PROVIDER_DEFAULTS).map(([id, provider]) => ({
+    providers: Object.entries(merged).map(([id, provider]) => ({
       id,
-      label: provider.label,
-      baseUrl: provider.baseUrl,
-      authType: provider.authType,
+      label: provider.label || id,
+      baseUrl: provider.baseUrl || '',
+      authType: provider.authType || 'bearer',
     })),
     credentialTypes: SUPPORTED_CREDENTIAL_TYPES,
   });
+}
+
+async function handleCreateProvider(req, res) {
+  const body = await parseJsonBody(req, res);
+  if (!body) return;
+  const id = String(body.id || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  if (!id) return sendError(res, 400, 'Provider ID is required', 'validation_error');
+  if (PROVIDER_DEFAULTS[id]) return sendError(res, 409, 'Cannot override built-in provider', 'conflict_error');
+  if (proxyConfig.providers && proxyConfig.providers[id]) return sendError(res, 409, 'Provider already exists', 'conflict_error');
+  const provider = {
+    label: String(body.label || id).trim(),
+    baseUrl: normalizeBaseUrl(body.baseUrl || ''),
+    authType: String(body.authType || 'bearer').trim(),
+    validationPath: String(body.validationPath || '/models').trim(),
+    authUrl: String(body.authUrl || '').trim() || undefined,
+    tokenUrl: String(body.tokenUrl || '').trim() || undefined,
+    clientId: String(body.clientId || '').trim() || undefined,
+    clientSecret: String(body.clientSecret || '').trim() || undefined,
+    scopes: String(body.scopes || '').trim() || undefined,
+  };
+  proxyConfig.providers = { ...(proxyConfig.providers || {}), [id]: provider };
+  saveConfig(proxyConfig);
+  sendJson(res, 201, { id, ...provider });
+}
+
+async function handleUpdateProvider(req, res) {
+  const body = await parseJsonBody(req, res);
+  if (!body) return;
+  const id = String(body.id || '').trim();
+  if (!id || !proxyConfig.providers || !proxyConfig.providers[id]) {
+    return sendError(res, 404, 'Provider not found', 'not_found_error');
+  }
+  if (PROVIDER_DEFAULTS[id]) return sendError(res, 409, 'Cannot modify built-in provider', 'conflict_error');
+  const existing = proxyConfig.providers[id];
+  proxyConfig.providers[id] = {
+    ...existing,
+    label: String(body.label || existing.label).trim(),
+    baseUrl: normalizeBaseUrl(body.baseUrl || existing.baseUrl),
+    authType: String(body.authType || existing.authType).trim(),
+    validationPath: String(body.validationPath || existing.validationPath).trim(),
+    authUrl: body.authUrl !== undefined ? String(body.authUrl || '').trim() || undefined : existing.authUrl,
+    tokenUrl: body.tokenUrl !== undefined ? String(body.tokenUrl || '').trim() || undefined : existing.tokenUrl,
+    clientId: body.clientId !== undefined ? String(body.clientId || '').trim() || undefined : existing.clientId,
+    clientSecret: body.clientSecret !== undefined ? String(body.clientSecret || '').trim() || undefined : existing.clientSecret,
+    scopes: body.scopes !== undefined ? String(body.scopes || '').trim() || undefined : existing.scopes,
+  };
+  saveConfig(proxyConfig);
+  sendJson(res, 200, { id, ...proxyConfig.providers[id] });
+}
+
+async function handleDeleteProvider(req, res) {
+  const body = await parseJsonBody(req, res);
+  if (!body) return;
+  const id = String(body.id || '').trim();
+  if (!id || !proxyConfig.providers || !proxyConfig.providers[id]) {
+    return sendError(res, 404, 'Provider not found', 'not_found_error');
+  }
+  if (PROVIDER_DEFAULTS[id]) return sendError(res, 409, 'Cannot delete built-in provider', 'conflict_error');
+  const inUse = safeArray(proxyConfig.credentials).some((c) => c.provider === id);
+  if (inUse) return sendError(res, 409, 'Provider in use by credentials', 'conflict_error');
+  delete proxyConfig.providers[id];
+  saveConfig(proxyConfig);
+  sendJson(res, 200, { deleted: id });
 }
 
 async function handleHealth(req, res) {
@@ -1172,195 +2018,180 @@ async function handleModelList(req, res) {
   sendJson(res, 200, { object: 'list', data: models });
 }
 
+// Retry with exponential backoff
+async function withRetry(fn, maxRetries = 3, baseDelay = 500) {
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      // Don't retry on 4xx client errors (except 429 rate limit)
+      const status = error.status || 500;
+      if (status >= 400 && status < 500 && status !== 429) {
+        throw error;
+      }
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function handleChatCompletions(req, res) {
   const reqBody = await parseJsonBody(req, res);
   if (!reqBody) return;
 
   const modelId = reqBody.model || 'deepseek/deepseek-v4-pro';
-  const provider = getModelProvider(modelId);
-  const credential = getBestCredential(provider, modelId);
-  if (!credential) {
-    sendError(res, 500, `No active credential available for provider ${provider}.`, 'configuration_error');
+  const toolId = detectClientTool(req);
+
+  // Check cache for non-streaming identical requests
+  if (!reqBody.stream) {
+    const cacheKey = getCacheKey(reqBody);
+    const cached = getCachedResponse(cacheKey);
+    if (cached) {
+      sendJson(res, 200, cached);
+      return;
+    }
+  }
+
+  // Global priority routing: credentials tried in #1, #2, #3... order across all providers
+  const orderedCredentials = getGlobalOrderedCredentials(modelId, toolId);
+  const envKey = (process.env.COMMAND_CODE_API_KEY && !orderedCredentials.some(c => c.provider === 'commandcode'))
+    ? { id: 'env-commandcode', provider: 'commandcode', authType: 'bearer', baseUrl: getApiBase(), getSecret: async () => process.env.COMMAND_CODE_API_KEY }
+    : null;
+
+  const credentialsToTry = envKey ? [...orderedCredentials, envKey] : orderedCredentials;
+
+  if (credentialsToTry.length === 0) {
+    sendError(res, 500, 'No active credentials available', 'configuration_error');
     return;
   }
 
-  const secretValue = credential.getSecret();
-  const authHeaders = {
-    ...buildAuthHeaders(credential.authType, secretValue),
-    ...getStaticProviderHeaders(provider),
+  let lastError = null;
+
+  for (const credentialRecord of credentialsToTry) {
+    let credential;
+    if (credentialRecord.id === 'env-commandcode') {
+      credential = credentialRecord;
+    } else {
+      const defaults = getProviderDefaults(credentialRecord.provider);
+      credential = {
+        ...credentialRecord,
+        authType: credentialRecord.authType || defaults.authType || 'bearer',
+        baseUrl: normalizeBaseUrl(credentialRecord.baseUrl || defaults.baseUrl || ''),
+        getSecret: async () => getCredentialSecretWithRefresh(credentialRecord),
+      };
+    }
+
+    const provider = credentialRecord.provider;
+    const secretValue = await credential.getSecret();
+    const authHeaders = {
+      ...buildAuthHeaders(credential.authType, secretValue),
+      ...getStaticProviderHeaders(provider),
+    };
+
+    try {
+      let result;
+      if (provider === 'commandcode') {
+        result = await withRetry(() => routeCommandCode(req, res, reqBody, modelId, credential, authHeaders));
+      } else {
+        result = await withRetry(() => routeOpenAICompatible(req, res, reqBody, modelId, credential, authHeaders, provider));
+      }
+      if (result) return;
+    } catch (error) {
+      lastError = { status: error.status || 502, message: error.message || String(error), type: 'api_error' };
+    }
+  }
+
+  // All providers exhausted
+  if (lastError) {
+    sendError(res, lastError.status, lastError.message, lastError.type);
+  } else {
+    sendError(res, 500, 'No providers available', 'configuration_error');
+  }
+}
+
+async function routeCommandCode(req, res, reqBody, modelId, credential, authHeaders) {
+  const systemMessage = safeArray(reqBody.messages).find((message) => message.role === 'system')?.content || '';
+  const ccBody = {
+    config: {
+      workingDir: process.cwd(),
+      date: new Date().toISOString().split('T')[0],
+      environment: `${process.platform}-${process.arch}`,
+      structure: [],
+      isGitRepo: false,
+      currentBranch: 'main',
+      mainBranch: 'main',
+      gitStatus: '',
+      recentCommits: [],
+    },
+    memory: '',
+    taste: '',
+    skills: null,
+    permissionMode: 'standard',
+    params: {
+      model: modelId,
+      messages: safeArray(reqBody.messages).map(convertMessageCC).filter(Boolean),
+      tools: convertToolsCC(reqBody.tools || []),
+      system: systemMessage,
+      max_tokens: reqBody.max_tokens || 4096,
+      temperature: reqBody.temperature ?? 0.3,
+      stream: true,
+    },
+    threadId: randomUUID(),
   };
 
-  if (provider === 'commandcode') {
-    const systemMessage = safeArray(reqBody.messages).find((message) => message.role === 'system')?.content || '';
-    const ccBody = {
-      config: {
-        workingDir: process.cwd(),
-        date: new Date().toISOString().split('T')[0],
-        environment: `${process.platform}-${process.arch}`,
-        structure: [],
-        isGitRepo: false,
-        currentBranch: 'main',
-        mainBranch: 'main',
-        gitStatus: '',
-        recentCommits: [],
-      },
-      memory: '',
-      taste: '',
-      skills: null,
-      permissionMode: 'standard',
-      params: {
-        model: modelId,
-        messages: safeArray(reqBody.messages).map(convertMessageCC).filter(Boolean),
-        tools: convertToolsCC(reqBody.tools || []),
-        system: systemMessage,
-        max_tokens: reqBody.max_tokens || 4096,
-        temperature: reqBody.temperature ?? 0.3,
-        stream: true,
-      },
-      threadId: randomUUID(),
-    };
-
-    const upstream = await fetch(`${getApiBase()}/alpha/generate`, {
-      method: 'POST',
-      headers: {
-        ...authHeaders,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(ccBody),
-    });
-
-    if (!upstream.ok) {
-      const message = await upstream.text().catch(() => 'Upstream error');
-      sendError(res, upstream.status, message, 'api_error');
-      return;
-    }
-
-    const events = await readAllEvents(upstream);
-    let textContent = '';
-    let toolCalls = [];
-    let usage = {};
-    let finishReason = 'stop';
-    let currentToolCall = null;
-
-    for (const event of events) {
-      if (event.type === 'text-delta') textContent += event.text || '';
-      else if (event.type === 'tool-input-start') currentToolCall = { index: toolCalls.length, id: event.id, name: event.toolName, args: '' };
-      else if (event.type === 'tool-input-delta' && currentToolCall) currentToolCall.args += event.delta || '';
-      else if (event.type === 'tool-input-end' && currentToolCall) {
-        toolCalls.push({
-          id: currentToolCall.id,
-          type: 'function',
-          function: { name: currentToolCall.name, arguments: currentToolCall.args },
-        });
-        currentToolCall = null;
-      } else if (event.type === 'tool-call') {
-        toolCalls.push({
-          id: event.toolCallId,
-          type: 'function',
-          function: { name: event.toolName, arguments: JSON.stringify(event.input || {}) },
-        });
-      } else if (event.type === 'finish' || event.type === 'finish-step') {
-        finishReason = event.finishReason === 'tool-calls'
-          ? 'tool_calls'
-          : event.finishReason === 'stop' || event.finishReason === 'end_turn'
-            ? 'stop'
-            : event.finishReason || 'stop';
-        usage = event.totalUsage || event.usage || {};
-      }
-    }
-
-    if (reqBody.stream) {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      let streamToolCall = null;
-      let toolCallIndex = 0;
-      for (const event of events) {
-        if (event.type === 'text-delta') {
-          res.write(`data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { content: event.text || '' }, null))}\n\n`);
-        } else if (event.type === 'tool-input-start') {
-          streamToolCall = { index: toolCallIndex++, id: event.id, name: event.toolName, args: '' };
-        } else if (event.type === 'tool-input-delta' && streamToolCall) {
-          streamToolCall.args += event.delta || '';
-        } else if (event.type === 'tool-input-end' && streamToolCall) {
-          res.write(`data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { tool_calls: [{ index: streamToolCall.index, id: streamToolCall.id, type: 'function', function: { name: streamToolCall.name, arguments: streamToolCall.args } }] }, null))}\n\n`);
-          streamToolCall = null;
-        } else if (event.type === 'tool-call') {
-          res.write(`data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { tool_calls: [{ index: toolCallIndex++, id: event.toolCallId, type: 'function', function: { name: event.toolName, arguments: JSON.stringify(event.input || {}) } }] }, null))}\n\n`);
-        } else if (event.type === 'finish' || event.type === 'finish-step') {
-          const finalChunk = {
-            id: `chatcmpl-${randomUUID()}`,
-            object: 'chat.completion.chunk',
-            created: Math.floor(Date.now() / 1000),
-            model: modelId,
-            choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
-          };
-          if (usage.totalTokens) {
-            finalChunk.usage = {
-              prompt_tokens: usage.inputTokens || 0,
-              completion_tokens: usage.outputTokens || 0,
-              total_tokens: usage.totalTokens || 0,
-            };
-          }
-          res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
-          res.write('data: [DONE]\n\n');
-        } else if (event.type === 'error') {
-          res.write(`data: ${JSON.stringify({ id: `chatcmpl-${randomUUID()}`, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, delta: {}, finish_reason: 'error' }] })}\n\n`);
-          res.write('data: [DONE]\n\n');
-        }
-      }
-      res.end();
-      updateCredentialUsage(credential.id, usage);
-      return;
-    }
-
-    const response = {
-      id: `chatcmpl-${randomUUID()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: modelId,
-      choices: [{
-        index: 0,
-        message: {
-          role: 'assistant',
-          content: textContent || null,
-        },
-        finish_reason: finishReason,
-      }],
-      usage: {
-        prompt_tokens: usage.inputTokens || 0,
-        completion_tokens: usage.outputTokens || 0,
-        total_tokens: usage.totalTokens || 0,
-      },
-    };
-    if (toolCalls.length > 0) response.choices[0].message.tool_calls = toolCalls;
-    sendJson(res, 200, response);
-    updateCredentialUsage(credential.id, usage);
-    return;
-  }
-
-  const defaults = getProviderDefaults(provider);
-  const baseUrl = normalizeBaseUrl(credential.baseUrl || defaults.baseUrl || '');
-  if (!baseUrl) {
-    sendError(res, 500, `Credential ${credential.name} is missing a base URL.`, 'configuration_error');
-    return;
-  }
-
-  const upstream = await fetch(`${baseUrl}/chat/completions`, {
+  const upstream = await fetch(`${getApiBase()}/alpha/generate`, {
     method: 'POST',
     headers: {
       ...authHeaders,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ...reqBody, model: modelId }),
+    body: JSON.stringify(ccBody),
   });
 
   if (!upstream.ok) {
     const message = await upstream.text().catch(() => 'Upstream error');
-    sendError(res, upstream.status, message, 'api_error');
-    return;
+    const error = new Error(message);
+    error.status = upstream.status;
+    throw error;
+  }
+
+  const events = await readAllEvents(upstream);
+  let textContent = '';
+  let toolCalls = [];
+  let usage = {};
+  let finishReason = 'stop';
+  let currentToolCall = null;
+
+  for (const event of events) {
+    if (event.type === 'text-delta') textContent += event.text || '';
+    else if (event.type === 'tool-input-start') currentToolCall = { index: toolCalls.length, id: event.id, name: event.toolName, args: '' };
+    else if (event.type === 'tool-input-delta' && currentToolCall) currentToolCall.args += event.delta || '';
+    else if (event.type === 'tool-input-end' && currentToolCall) {
+      toolCalls.push({
+        id: currentToolCall.id,
+        type: 'function',
+        function: { name: currentToolCall.name, arguments: currentToolCall.args },
+      });
+      currentToolCall = null;
+    } else if (event.type === 'tool-call') {
+      toolCalls.push({
+        id: event.toolCallId,
+        type: 'function',
+        function: { name: event.toolName, arguments: JSON.stringify(event.input || {}) },
+      });
+    } else if (event.type === 'finish' || event.type === 'finish-step') {
+      finishReason = event.finishReason === 'tool-calls'
+        ? 'tool_calls'
+        : event.finishReason === 'stop' || event.finishReason === 'end_turn'
+          ? 'stop'
+          : event.finishReason || 'stop';
+      usage = event.totalUsage || event.usage || {};
+    }
   }
 
   if (reqBody.stream) {
@@ -1369,26 +2200,191 @@ async function handleChatCompletions(req, res) {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
-      res.write(chunk);
+    let streamToolCall = null;
+    let toolCallIndex = 0;
+    for (const event of events) {
+      if (event.type === 'text-delta') {
+        res.write(`data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { content: event.text || '' }, null))}\n\n`);
+      } else if (event.type === 'tool-input-start') {
+        streamToolCall = { index: toolCallIndex++, id: event.id, name: event.toolName, args: '' };
+      } else if (event.type === 'tool-input-delta' && streamToolCall) {
+        streamToolCall.args += event.delta || '';
+      } else if (event.type === 'tool-input-end' && streamToolCall) {
+        res.write(`data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { tool_calls: [{ index: streamToolCall.index, id: streamToolCall.id, type: 'function', function: { name: streamToolCall.name, arguments: streamToolCall.args } }] }, null))}\n\n`);
+        streamToolCall = null;
+      } else if (event.type === 'tool-call') {
+        res.write(`data: ${JSON.stringify(buildOpenAIChunk(`chatcmpl-${randomUUID()}`, modelId, 0, { tool_calls: [{ index: toolCallIndex++, id: event.toolCallId, type: 'function', function: { name: event.toolName, arguments: JSON.stringify(event.input || {}) } }] }, null))}\n\n`);
+      } else if (event.type === 'finish' || event.type === 'finish-step') {
+        const finalChunk = {
+          id: `chatcmpl-${randomUUID()}`,
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model: modelId,
+          choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+        };
+        if (usage.totalTokens) {
+          finalChunk.usage = {
+            prompt_tokens: usage.inputTokens || 0,
+            completion_tokens: usage.outputTokens || 0,
+            total_tokens: usage.totalTokens || 0,
+          };
+        }
+        res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+        res.write('data: [DONE]\n\n');
+      } else if (event.type === 'error') {
+        res.write(`data: ${JSON.stringify({ id: `chatcmpl-${randomUUID()}`, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, delta: {}, finish_reason: 'error' }] })}\n\n`);
+        res.write('data: [DONE]\n\n');
+      }
     }
     res.end();
-    updateCredentialUsage(credential.id, parseUsageFromSseBuffer(buffer));
-    return;
+    updateCredentialUsage(credential.id, usage);
+    return true;
   }
 
-  const data = await upstream.json();
-  sendJson(res, 200, data);
-  updateCredentialUsage(credential.id, data.usage || {});
+  const response = {
+    id: `chatcmpl-${randomUUID()}`,
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: modelId,
+    choices: [{
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: textContent || null,
+      },
+      finish_reason: finishReason,
+    }],
+    usage: {
+      prompt_tokens: usage.inputTokens || 0,
+      completion_tokens: usage.outputTokens || 0,
+      total_tokens: usage.totalTokens || 0,
+    },
+  };
+  if (toolCalls.length > 0) response.choices[0].message.tool_calls = toolCalls;
+  sendJson(res, 200, response);
+  updateCredentialUsage(credential.id, usage);
+  // Cache non-streaming responses
+  if (!reqBody.stream) {
+    setCachedResponse(getCacheKey(reqBody), response);
+  }
+  return true;
 }
 
+async function routeOpenAICompatible(req, res, reqBody, modelId, credential, authHeaders, provider) {
+  const defaults = getProviderDefaults(provider);
+  const baseUrl = normalizeBaseUrl(credential.baseUrl || defaults.baseUrl || '');
+  if (!baseUrl) {
+    throw new Error(`Credential ${credential.name} is missing a base URL`);
+  }
+
+  // Provider-specific format conversion and endpoint selection
+  let upstreamUrl = `${baseUrl}/chat/completions`;
+  let upstreamBody = { ...reqBody, model: modelId };
+  let isClaude = false;
+  let isGemini = false;
+
+  // Translate model ID to provider-native format
+  if (provider === 'opencode') {
+    const OPTO_MODEL_MAP = {
+      'deepseek/deepseek-v4-pro': 'deepseek-v4-pro',
+      'deepseek/deepseek-v4-flash': 'deepseek-v4-flash',
+      'Qwen/Qwen3.6-Plus': 'qwen3.6-plus',
+      'zai-org/GLM-5.1': 'glm-5.1',
+      'moonshotai/Kimi-K2.6': 'kimi-k2.6',
+      'MiniMaxAI/MiniMax-M2.7': 'minimax-m2.7',
+    };
+    upstreamBody.model = OPTO_MODEL_MAP[modelId] || modelId;
+  } else if (provider === 'opencode-compatible') {
+    // No model ID translation needed
+  }
+
+  if (provider === 'anthropic') {
+    isClaude = true;
+    upstreamUrl = `${baseUrl}/messages`;
+    upstreamBody = convertOpenAIToClaudeMessages(reqBody);
+  } else if (provider === 'google-ai') {
+    isGemini = true;
+    upstreamUrl = `${baseUrl}/models/${modelId}:generateContent`;
+    upstreamBody = convertOpenAIToGemini(reqBody);
+  }
+
+  const upstream = await fetch(upstreamUrl, {
+    method: 'POST',
+    headers: {
+      ...authHeaders,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(upstreamBody),
+  });
+
+  if (!upstream.ok) {
+    const message = await upstream.text().catch(() => 'Upstream error');
+    const error = new Error(message);
+    error.status = upstream.status;
+    throw error;
+  }
+
+  // Non-streaming: convert response back to OpenAI format
+  if (!reqBody.stream) {
+    const data = await upstream.json();
+    let response = data;
+    if (isClaude) response = convertClaudeResponseToOpenAI(data, modelId);
+    if (isGemini) response = convertGeminiResponseToOpenAI(data, modelId);
+    sendJson(res, 200, response);
+    updateCredentialUsage(credential.id, response.usage || {});
+    // Cache non-streaming responses
+    if (!reqBody.stream) {
+      setCachedResponse(getCacheKey(reqBody), response);
+    }
+    return true;
+  }
+
+  // Streaming
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  if (!upstream.body) {
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return true;
+  }
+
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+
+    if (isClaude) {
+      // Convert Claude SSE to OpenAI SSE
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const converted = convertClaudeStreamToOpenAI(line, modelId);
+          if (converted) {
+            res.write(`data: ${JSON.stringify(converted)}\n\n`);
+          }
+        } else if (line.trim()) {
+          res.write(line + '\n');
+        }
+      }
+    } else {
+      res.write(chunk);
+    }
+    buffer += chunk;
+  }
+
+  res.write('data: [DONE]\n\n');
+  res.end();
+  updateCredentialUsage(credential.id, parseUsageFromSseBuffer(buffer));
+  return true;
+}
 async function handleLegacyKeys(req, res) {
   if (req.method === 'GET') {
     sendJson(res, 200, {
@@ -1477,7 +2473,35 @@ async function handleLegacyValidation(req, res, validateAll = false) {
   });
 }
 
+function checkProxyAuth(req) {
+  if (!PROXY_API_KEY) return true;
+  const auth = req.headers.authorization || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (token.length !== PROXY_API_KEY.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(PROXY_API_KEY));
+  } catch (_) {
+    return false;
+  }
+}
+
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
 async function handleRequest(req, res) {
+  setCorsHeaders(res);
+
+  // Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const parsedUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   const pathname = parsedUrl.pathname;
 
@@ -1485,13 +2509,49 @@ async function handleRequest(req, res) {
     return handleDashboard(req, res);
   }
 
+  if (pathname === '/health' && req.method === 'GET') {
+    return handleHealth(req, res);
+  }
+
+  // OAuth Server endpoints (proxy IS the OAuth provider for ChatGPT apps)
+  if (pathname.startsWith('/oauth/authorize/')) {
+    const provider = pathname.replace('/oauth/authorize/', '');
+    return handleOAuthAuthorize(req, res, provider, parsedUrl);
+  }
+  if (pathname.startsWith('/oauth/approve/') && req.method === 'POST') {
+    const provider = pathname.replace('/oauth/approve/', '');
+    return handleOAuthApprove(req, res, provider, parsedUrl);
+  }
+  if (pathname === '/oauth/token' && req.method === 'POST') {
+    return handleOAuthToken(req, res);
+  }
+
+  // OAUth Client endpoints (proxy logs INTO external providers)
+  if (pathname.startsWith('/oauth/client/login/')) {
+    const provider = pathname.replace('/oauth/client/login/', '');
+    return handleOAuthClientLogin(req, res, provider, parsedUrl);
+  }
+  if (pathname === '/oauth/client/callback') {
+    return handleOAuthClientCallback(req, res, parsedUrl);
+  }
+  if (pathname === '/api/oauth/check') {
+    return handleOAuthClientCheck(req, res, parsedUrl);
+  }
+
+  if (!checkProxyAuth(req)) {
+    return sendError(res, 401, 'Invalid or missing proxy API key. Set PROXY_API_KEY env var and include it as Bearer token in Authorization header.', 'authentication_error');
+  }
+
   if (pathname === '/api/config') {
     if (req.method === 'GET') return handleGetConfig(req, res);
     if (req.method === 'POST') return handleUpdateConfig(req, res);
   }
 
-  if (pathname === '/api/providers' && req.method === 'GET') {
-    return handleGetProviders(req, res);
+  if (pathname === '/api/providers') {
+    if (req.method === 'GET') return handleGetProviders(req, res);
+    if (req.method === 'POST') return handleCreateProvider(req, res);
+    if (req.method === 'PUT') return handleUpdateProvider(req, res);
+    if (req.method === 'DELETE') return handleDeleteProvider(req, res);
   }
 
   if (pathname === '/api/credentials') {
@@ -1503,6 +2563,10 @@ async function handleRequest(req, res) {
 
   if (pathname === '/api/credentials/reveal' && req.method === 'POST') {
     return handleRevealCredential(req, res);
+  }
+
+  if (pathname === '/api/credentials/reorder' && req.method === 'POST') {
+    return handleReorderCredentials(req, res);
   }
 
   if (pathname === '/api/credentials/validate' && req.method === 'POST') {
@@ -1537,10 +2601,6 @@ async function handleRequest(req, res) {
     });
   }
 
-  if (pathname === '/health' && req.method === 'GET') {
-    return handleHealth(req, res);
-  }
-
   if (pathname === '/v1/models' && req.method === 'GET') {
     return handleModelList(req, res);
   }
@@ -1559,9 +2619,24 @@ const server = http.createServer((req, res) => {
   });
 });
 
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${getPort()} is already in use. Set PROXY_PORT to a different port.`);
+    process.exit(1);
+  }
+  console.error('Server error:', error.message);
+  process.exit(1);
+});
+
 server.listen(getPort(), DEFAULT_BIND_HOST, () => {
-  console.log(`Command Code Proxy on http://localhost:${getPort()}`);
+  const displayHost = DEFAULT_BIND_HOST === '0.0.0.0' ? 'localhost' : DEFAULT_BIND_HOST;
+  console.log(`Command Code Proxy on http://${displayHost}:${getPort()}`);
+  console.log(`Binding to: ${DEFAULT_BIND_HOST}:${getPort()}`);
   console.log(`Vault config: ${CONFIG_DIR}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
 });
 
 module.exports = {

@@ -4,15 +4,11 @@
   "description": "Local-first credential vault and OpenAI-compatible proxy for Command Code and other AI providers",
   "main": "proxy.js",
   "scripts": {
-    "start": "bun run proxy.js",
-    "dev": "bun run --watch proxy.js",
+    "start": "node proxy.js",
+    "dev": "node --watch proxy.js",
     "test": "node test-proxy.js"
   },
-  "keywords": ["command-code", "proxy", "openai", "api"],
-  "author": "",
+  "keywords": ["command-code", "proxy", "openai", "api", "vault", "credentials"],
   "license": "MIT",
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "node-fetch": "^3.3.2"
-  }
+  "dependencies": {}
 }

@@ -1,1 +1,11 @@
+node_modules/
+.env
 .config*/
+.config-browser/
+.commandcode/
+.publish-tmp/
+_clean/
+_ship/
+_tempgit/
+*.patch
+/console.log*)
