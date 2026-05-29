@@ -1300,12 +1300,12 @@
 
     function renderCredentials() {
       const container = document.getElementById('vaultList');
-      const filtered = getFilteredCredentials();
 
-      filtered.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-      filtered.forEach((c, i) => c._rank = i + 1);
+      credentials.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      const sortedFiltered = getFilteredCredentials();
+      sortedFiltered.forEach((c, i) => c._rank = i + 1);
 
-      if (filtered.length === 0) {
+      if (sortedFiltered.length === 0) {
         container.innerHTML = `
           <div class="empty-state">
             <div class="mb-3"><i class="bi bi-safe2" style="font-size: 2.4rem;"></i></div>
@@ -1321,10 +1321,10 @@
             <div class="provider-heading">
               <div>
                 <div class="provider-name">All Credentials</div>
-                <div class="provider-meta">${filtered.length} credential${filtered.length === 1 ? '' : 's'} · #1 is tried first</div>
+                <div class="provider-meta">${sortedFiltered.length} credential${sortedFiltered.length === 1 ? '' : 's'} · #1 is tried first</div>
               </div>
             </div>
-            ${filtered.map(cred => renderCredentialCard(cred, filtered.length)).join('')}
+            ${sortedFiltered.map(cred => renderCredentialCard(cred, sortedFiltered.length)).join('')}
           </section>
         `;
     }

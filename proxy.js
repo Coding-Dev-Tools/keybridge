@@ -398,7 +398,10 @@ function getVaultKey() {
 
 function saveVault() {
   ensureConfigDir();
-  fs.writeFileSync(VAULT_FILE, stableJson(vaultState));
+  // Use async write to avoid blocking the event loop on every secret mutation.
+  fs.writeFile(VAULT_FILE, stableJson(vaultState), (err) => {
+    if (err) console.error('[proxy] saveVault write error:', err.message);
+  });
 }
 
 function encryptSecretPayload(payload) {
@@ -576,7 +579,10 @@ function saveConfig(config) {
     models: safeArray(config.models).map(normalizeModel).filter((model) => model.id && model.name),
     providers: config.providers && typeof config.providers === 'object' ? config.providers : {},
   };
-  fs.writeFileSync(CONFIG_FILE, stableJson(safeConfig));
+  // Use async write to avoid blocking the event loop on every config mutation.
+  fs.writeFile(CONFIG_FILE, stableJson(safeConfig), (err) => {
+    if (err) console.error('[proxy] saveConfig write error:', err.message);
+  });
   return safeConfig;
 }
 
@@ -1465,11 +1471,10 @@ async function handleReorderCredentials(req, res) {
     return sendError(res, 400, 'orderedIds (string array) is required', 'invalid_request_error');
   }
   const credentials = safeArray(proxyConfig.credentials);
-  const maxPriority = orderedIds.length;
   orderedIds.forEach((id, index) => {
     const cred = credentials.find(c => c.id === id);
     if (cred) {
-      cred.priority = maxPriority - index;
+      cred.priority = orderedIds.length - index;
       cred.updatedAt = nowIso();
     }
   });
