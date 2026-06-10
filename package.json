@@ -1,14 +1,36 @@
 {
-  "name": "commandcode-proxy",
-  "version": "2.0.0",
-  "description": "Local-first credential vault and OpenAI-compatible proxy for Command Code and other AI providers",
+  "name": "commandcode-vault",
+  "version": "3.0.0",
+  "description": "Local-first encrypted credential vault and OpenAI-compatible LLM proxy. Provider-agnostic API key bridge for any AI tool.",
   "main": "proxy.js",
   "scripts": {
     "start": "node proxy.js",
     "dev": "node --watch proxy.js",
     "test": "node test-proxy.js"
   },
-  "keywords": ["command-code", "proxy", "openai", "api", "vault", "credentials"],
+  "keywords": [
+    "commandcode",
+    "vault",
+    "llm-proxy",
+    "api-key-vault",
+    "credential-manager",
+    "openai-compatible",
+    "llm-gateway",
+    "proxy",
+    "developer-tools"
+  ],
+  "author": "Coding-Dev-Tools",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Coding-Dev-Tools/commandcode-vault.git"
+  },
+  "homepage": "https://github.com/Coding-Dev-Tools/commandcode-vault#readme",
+  "bugs": {
+    "url": "https://github.com/Coding-Dev-Tools/commandcode-vault/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {}
 }
