@@ -1114,12 +1114,26 @@
       vscode: 'VS Code', 'claude-desktop': 'Claude Desktop',
     };
 
-    function apiFetch(url, options = {}) {
+    // The proxy only injects window.PROXY_API_KEY for direct local
+    // navigations. In every other case we ask the operator for the key once
+    // and keep it for this tab's session.
+    let proxyApiKey = (typeof window !== 'undefined' && window.PROXY_API_KEY)
+      || sessionStorage.getItem('proxyApiKey') || '';
+
+    async function apiFetch(url, options = {}) {
       const headers = { ...(options.headers || {}) };
-      if (typeof window !== 'undefined' && window.PROXY_API_KEY) {
-        headers['Authorization'] = `Bearer ${window.PROXY_API_KEY}`;
+      if (proxyApiKey) headers['Authorization'] = `Bearer ${proxyApiKey}`;
+      let res = await fetch(url, { ...options, headers });
+      if (res.status === 401) {
+        const entered = prompt('Enter your proxy API key (PROXY_API_KEY) to unlock the dashboard:');
+        if (entered && entered.trim()) {
+          proxyApiKey = entered.trim();
+          sessionStorage.setItem('proxyApiKey', proxyApiKey);
+          headers['Authorization'] = `Bearer ${proxyApiKey}`;
+          res = await fetch(url, { ...options, headers });
+        }
       }
-      return fetch(url, { ...options, headers });
+      return res;
     }
 
     document.addEventListener('DOMContentLoaded', async () => {

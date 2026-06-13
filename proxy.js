@@ -7,7 +7,9 @@ const crypto = require('crypto');
 const DEFAULT_BASE = process.env.COMMAND_CODE_API_URL || 'https://api.commandcode.ai';
 const DEFAULT_CLI_VER = process.env.COMMAND_CODE_CLI_VERSION || '0.26.24';
 const DEFAULT_PORT = parseInt(process.env.PROXY_PORT || '3000', 10);
-const DEFAULT_BIND_HOST = process.env.PROXY_BIND_HOST || '0.0.0.0';
+// Security: bind to loopback by default. A credential vault must never be
+// LAN-reachable unless the operator explicitly opts in via PROXY_BIND_HOST.
+const DEFAULT_BIND_HOST = process.env.PROXY_BIND_HOST || '127.0.0.1';
 const PROXY_API_KEY = process.env.PROXY_API_KEY || '';
 const CONFIG_VERSION = 2;
 const DASHBOARD_FILE = path.join(process.cwd(), 'dashboard.html');
@@ -396,12 +398,24 @@ function getVaultKey() {
   return vaultKeyCache;
 }
 
+// Durable atomic write: write to a temp file then rename, so a crash or full
+// disk can never truncate the vault/config, and failures surface to callers
+// (bubbling up to the request handler's catch -> 500) instead of being lost
+// in an async callback.
+function writeFileAtomicSync(file, data) {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, data, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+
 function saveVault() {
   ensureConfigDir();
-  // Use async write to avoid blocking the event loop on every secret mutation.
-  fs.writeFile(VAULT_FILE, stableJson(vaultState), (err) => {
-    if (err) console.error('[proxy] saveVault write error:', err.message);
-  });
+  try {
+    writeFileAtomicSync(VAULT_FILE, stableJson(vaultState));
+  } catch (err) {
+    console.error('[proxy] saveVault write error:', err.message);
+    throw err;
+  }
 }
 
 function encryptSecretPayload(payload) {
@@ -579,10 +593,12 @@ function saveConfig(config) {
     models: safeArray(config.models).map(normalizeModel).filter((model) => model.id && model.name),
     providers: config.providers && typeof config.providers === 'object' ? config.providers : {},
   };
-  // Use async write to avoid blocking the event loop on every config mutation.
-  fs.writeFile(CONFIG_FILE, stableJson(safeConfig), (err) => {
-    if (err) console.error('[proxy] saveConfig write error:', err.message);
-  });
+  try {
+    writeFileAtomicSync(CONFIG_FILE, stableJson(safeConfig));
+  } catch (err) {
+    console.error('[proxy] saveConfig write error:', err.message);
+    throw err;
+  }
   return safeConfig;
 }
 
@@ -1365,7 +1381,12 @@ async function handleDashboard(req, res) {
     return;
   }
   let html = fs.readFileSync(DASHBOARD_FILE, 'utf8');
-  if (PROXY_API_KEY) {
+  // Security: only auto-inject the master key for direct, same-origin
+  // navigations from this machine. Cross-origin fetches (drive-by JS on a
+  // page the operator happens to visit) carry an Origin header and must
+  // never receive the key; remote hosts must never receive it either.
+  // The dashboard falls back to prompting for the key when not injected.
+  if (PROXY_API_KEY && isLocalDirectRequest(req)) {
     const safeKey = PROXY_API_KEY.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/</g, '\\x3c');
     const inject = `<script>window.PROXY_API_KEY='${safeKey}';</script>`;
     html = html.replace('</head>', `${inject}</head>`);
@@ -1482,9 +1503,26 @@ async function handleReorderCredentials(req, res) {
   sendJson(res, 200, { success: true });
 }
 
+// Reveal endpoint returns plaintext secrets, so it gets defense in depth:
+// a sliding-window rate limit plus an audit log of every attempt.
+const REVEAL_WINDOW_MS = 60 * 1000;
+const REVEAL_MAX_PER_WINDOW = 10;
+const revealAttempts = [];
+
 async function handleRevealCredential(req, res) {
+  const now = Date.now();
+  while (revealAttempts.length && now - revealAttempts[0] > REVEAL_WINDOW_MS) {
+    revealAttempts.shift();
+  }
+  if (revealAttempts.length >= REVEAL_MAX_PER_WINDOW) {
+    console.warn(`[audit] credential reveal RATE-LIMITED from=${req.socket.remoteAddress}`);
+    sendError(res, 429, 'Too many reveal requests; wait a minute and retry.', 'rate_limit_error');
+    return;
+  }
+  revealAttempts.push(now);
   const input = await parseJsonBody(req, res);
   if (!input) return;
+  console.warn(`[audit] credential reveal id=${input.id} from=${req.socket.remoteAddress}`);
   const credential = getCredentialById(input.id);
   if (!credential) {
     sendError(res, 404, 'Credential not found', 'not_found_error');
@@ -1553,8 +1591,10 @@ async function handleOAuthAuthorize(req, res, provider, parsedUrl) {
   // Generate authorization code
   const code = crypto.randomBytes(32).toString('hex');
 
-  // Store pending authorization
+  // Store pending authorization (purging any expired codes first so leaked
+  // old codes cannot linger forever in the config file)
   if (!proxyConfig.oauthPending) proxyConfig.oauthPending = {};
+  purgeExpiredOAuthCodes();
   proxyConfig.oauthPending[code] = {
     provider,
     clientId,
@@ -1607,13 +1647,33 @@ p{color:#8da396;margin:0 0 24px}
   res.end(html);
 }
 
+// Authorization codes are single-use, short-lived artifacts. Ten minutes is
+// generous for a human approval flow; anything older is treated as leaked.
+const OAUTH_CODE_TTL_MS = 10 * 60 * 1000;
+
+function isExpiredOAuthCode(pending) {
+  return !pending.createdAt || Date.now() - pending.createdAt > OAUTH_CODE_TTL_MS;
+}
+
+function purgeExpiredOAuthCodes() {
+  const pendingMap = proxyConfig.oauthPending;
+  if (!pendingMap) return;
+  for (const [code, pending] of Object.entries(pendingMap)) {
+    if (isExpiredOAuthCode(pending)) delete pendingMap[code];
+  }
+}
+
 async function handleOAuthApprove(req, res, provider, parsedUrl) {
   const body = await parseFormBody(req);
   const code = body.code;
   const state = body.state;
 
   const pending = proxyConfig.oauthPending?.[code];
-  if (!pending || pending.provider !== provider) {
+  if (!pending || pending.provider !== provider || isExpiredOAuthCode(pending)) {
+    if (pending) {
+      delete proxyConfig.oauthPending[code];
+      saveConfig(proxyConfig);
+    }
     sendError(res, 400, 'Invalid or expired authorization code');
     return;
   }
@@ -1640,7 +1700,11 @@ async function handleOAuthToken(req, res) {
     const code = body.code;
     const pending = proxyConfig.oauthPending?.[code];
 
-    if (!pending || !pending.approved) {
+    if (!pending || !pending.approved || isExpiredOAuthCode(pending)) {
+      if (pending) {
+        delete proxyConfig.oauthPending[code];
+        saveConfig(proxyConfig);
+      }
       sendError(res, 400, 'Invalid or unapproved authorization code');
       return;
     }
@@ -1998,6 +2062,12 @@ async function handleHealth(req, res) {
     : typeof Bun !== 'undefined'
       ? `Bun ${Bun?.version || ''}`
       : `Node.js ${process.version}`;
+  // Unauthenticated callers get a bare liveness signal; system details
+  // (paths, platform, runtime) are only for authenticated operators.
+  if (!checkProxyAuth(req)) {
+    sendJson(res, 200, { status: 'ok', version: '2.0.0' });
+    return;
+  }
   sendJson(res, 200, {
     status: 'ok',
     version: '2.0.0',
@@ -2007,7 +2077,7 @@ async function handleHealth(req, res) {
     cwd: process.cwd(),
     config_dir: CONFIG_DIR,
     vault_file: VAULT_FILE,
-    local_only: true,
+    local_only: isLoopbackAddress(DEFAULT_BIND_HOST) || DEFAULT_BIND_HOST === 'localhost',
   });
 }
 
@@ -2490,15 +2560,36 @@ function checkProxyAuth(req) {
   }
 }
 
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Max-Age', '86400');
+const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+function isLoopbackAddress(addr) {
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+// True only for direct requests from this machine that did NOT originate from
+// a cross-origin browser context (cross-origin fetches always send Origin).
+function isLocalDirectRequest(req) {
+  if (!isLoopbackAddress(req.socket.remoteAddress)) return false;
+  const origin = req.headers.origin;
+  if (origin && !LOCAL_ORIGIN_RE.test(origin)) return false;
+  return true;
+}
+
+// Security: never use a wildcard. Only reflect local origins; foreign web
+// pages get no CORS grant, so browsers refuse to hand them our responses.
+function setCorsHeaders(res, req) {
+  const origin = req && req.headers.origin;
+  if (origin && LOCAL_ORIGIN_RE.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
 }
 
 async function handleRequest(req, res) {
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
 
   // Handle preflight OPTIONS requests
   if (req.method === 'OPTIONS') {
@@ -2638,6 +2729,15 @@ server.listen(getPort(), DEFAULT_BIND_HOST, () => {
   console.log(`Command Code Proxy on http://${displayHost}:${getPort()}`);
   console.log(`Binding to: ${DEFAULT_BIND_HOST}:${getPort()}`);
   console.log(`Vault config: ${CONFIG_DIR}`);
+  if (!PROXY_API_KEY) {
+    console.warn('[proxy] WARNING: PROXY_API_KEY is not set — all management APIs are UNAUTHENTICATED. Set it before storing real credentials.');
+  }
+  if (!process.env.COMMANDCODE_PROXY_MASTER_KEY) {
+    console.warn('[proxy] WARNING: COMMANDCODE_PROXY_MASTER_KEY is not set — vault encryption falls back to a machine-derived key that local processes can reproduce.');
+  }
+  if (DEFAULT_BIND_HOST === '0.0.0.0' || DEFAULT_BIND_HOST === '::') {
+    console.warn('[proxy] WARNING: binding to all interfaces — the vault is reachable from your network.');
+  }
 });
 
 process.on('unhandledRejection', (reason) => {
