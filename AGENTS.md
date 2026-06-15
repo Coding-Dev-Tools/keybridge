@@ -1,3 +1,4 @@
+<!-- NOTE 2026-06-11: this file contains only generic context-mode rules (nothing keybridge-specific). A parent-level C:\Users\jomie\Documents\Github\CLAUDE.md already loads RTK/context-mode rules for all repos — content here partially duplicates that. Left in place; removal is a maintainer decision. -->
 # context-mode — MANDATORY routing rules
 
 context-mode MCP tools available. Rules protect context window from flooding. One unrouted command dumps 56 KB into context.
