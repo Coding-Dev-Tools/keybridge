@@ -198,3 +198,9 @@ The test covers:
 - ChatGPT support in this release is **secure token storage**, not a browser OAuth sign-in flow
 - Streaming token usage for some third-party providers is best-effort unless the upstream includes usage chunks
 - Port changes are saved immediately but need a proxy restart to take effect
+
+## Install
+
+```bash
+npm install
+```

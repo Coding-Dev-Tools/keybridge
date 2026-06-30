@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node proxy.js",
     "dev": "node --watch proxy.js",
-    "test": "node test-proxy.js"
+    "test": "node test-proxy.js",
+    "lint": "eslint ."
   },
   "keywords": [
     "commandcode",
