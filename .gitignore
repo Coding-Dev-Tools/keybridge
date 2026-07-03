@@ -9,3 +9,8 @@ _ship/
 _tempgit/
 *.patch
 /console.log*)
+
+# Added by release-prep
+__pycache__
+dist
+build
