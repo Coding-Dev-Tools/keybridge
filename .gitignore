@@ -14,3 +14,5 @@ _tempgit/
 __pycache__
 dist
 build
+
+_tmp_*
