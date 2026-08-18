@@ -11,12 +11,12 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.2.2 (pinned)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 (pinned)
         with:
           path: target
 
       - name: Check out the shared release-audit harness
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.2.2 (pinned)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 (pinned)
         with:
           repository: Coding-Dev-Tools/release-audit
           path: harness
