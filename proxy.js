@@ -169,15 +169,17 @@ const CACHE_MAX_SIZE = 100;
 const CACHE_TTL_MS = 30000; // 30 seconds
 
 function getCacheKey(reqBody) {
-  // Cache key based on model, messages, temperature, max_tokens
-  const key = JSON.stringify({
-    model: reqBody.model,
-    messages: reqBody.messages,
-    temperature: reqBody.temperature,
-    max_tokens: reqBody.max_tokens,
-    top_p: reqBody.top_p,
-  });
-  return crypto.createHash('sha256').update(key).digest('hex');
+  // Hash the ENTIRE parsed request body instead of a hand-picked subset.
+  // The old key covered only model/messages/temperature/max_tokens/top_p and
+  // omitted tools, tool_choice, response_format, stop, n, seed and the
+  // penalty fields — so within the TTL a request carrying tools could be
+  // served a cached answer that was generated WITHOUT those tools (silently
+  // dropping tool_calls and breaking agent tool-calling loops), and two
+  // requests differing only in sampling params shared one entry. 'stream' is
+  // excluded: entries are only written and read for non-streaming requests.
+  const cacheable = { ...(reqBody || {}) };
+  delete cacheable.stream;
+  return crypto.createHash('sha256').update(JSON.stringify(cacheable)).digest('hex');
 }
 
 function getCachedResponse(cacheKey) {
@@ -2774,9 +2776,16 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason);
 });
 
+// Pure cache helpers are exported so unit tests can exercise the response
+// cache without going through HTTP; requiring this module still boots the
+// server exactly as before.
 module.exports = {
   server,
   CONFIG_DIR,
   CONFIG_FILE,
   VAULT_FILE,
+  getCacheKey,
+  getCachedResponse,
+  setCachedResponse,
+  responseCache,
 };
