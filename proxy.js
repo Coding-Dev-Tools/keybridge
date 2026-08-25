@@ -161,7 +161,7 @@ const PROVIDER_DEFAULTS = {
   },
 };
 
-let customProviders = {};
+let _customProviders = {}; // reserved for future custom-provider overrides
 
 // Simple in-memory response cache for non-streaming identical requests
 const responseCache = new Map();
@@ -360,15 +360,30 @@ function loadVaultFile() {
     return freshVault;
   }
 
+  let parsed;
   try {
-    const parsed = JSON.parse(fs.readFileSync(VAULT_FILE, 'utf8'));
-    return {
-      version: parsed.version || 1,
-      keySalt: parsed.keySalt || crypto.randomBytes(16).toString('base64'),
-      entries: parsed.entries && typeof parsed.entries === 'object' ? parsed.entries : {},
-    };
-  } catch (_) {
-    const recoveredVault = {
+    parsed = JSON.parse(fs.readFileSync(VAULT_FILE, 'utf8'));
+  } catch (err) {
+    // A corrupt/unreadable vault must NEVER be silently destroyed: previously
+    // this branch overwrote vault.json in place with a fresh empty vault,
+    // wiping every stored credential with no trace and no warning (silent-
+    // failure class). Archive the corrupt file first, then recover loudly.
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backup = `${VAULT_FILE}.corrupt-${stamp}`;
+    try {
+      fs.renameSync(VAULT_FILE, backup);
+    } catch (_) {
+      // rename denied (mount quirk): fall back to leaving the original in
+      // place; the fresh vault write below will still surface the problem.
+    }
+    console.error(
+      `[proxy] WARNING: ${VAULT_FILE} is unreadable/corrupt (${err.message}).` +
+      `\n[proxy] Original preserved at ${backup}.` +
+      `\n[proxy] Starting an EMPTY vault — previously stored credentials cannot be decrypted against a new salt and were NOT migrated.` +
+      `\n[proxy] Restore the backup manually to recover entries.`
+    );
+    parsed = null;
+    var recoveredVault = {
       version: 1,
       keySalt: crypto.randomBytes(16).toString('base64'),
       entries: {},
@@ -376,6 +391,21 @@ function loadVaultFile() {
     fs.writeFileSync(VAULT_FILE, stableJson(recoveredVault));
     return recoveredVault;
   }
+
+  const recoveredKeySalt = parsed.keySalt;
+  if (!recoveredKeySalt && Object.keys(parsed.entries || {}).length > 0) {
+    // Entries without a salt can never be decrypted again — say so instead of
+    // quietly regenerating the salt and reporting green.
+    console.error(
+      `[proxy] WARNING: ${VAULT_FILE} has ${Object.keys(parsed.entries).length} entr(ies) but no keySalt.` +
+      `\n[proxy] Those entries are unrecoverable and will fail decryption; regenerate or restore from backup.`
+    );
+  }
+  return {
+    version: parsed.version || 1,
+    keySalt: recoveredKeySalt || crypto.randomBytes(16).toString('base64'),
+    entries: parsed.entries && typeof parsed.entries === 'object' ? parsed.entries : {},
+  };
 }
 
 function ensureVaultLocalSecret() {
@@ -580,7 +610,7 @@ function normalizeCredentialMeta(meta, knownProviders = {}) {
 
 function saveConfig(config) {
   ensureConfigDir();
-  const { apiKeys, ...configWithoutLegacyKeys } = config;
+  const { apiKeys: _legacyApiKeys, ...configWithoutLegacyKeys } = config;
   const knownProviders = { ...PROVIDER_DEFAULTS, ...(config.providers || {}) };
   const safeConfig = {
     ...configWithoutLegacyKeys,
@@ -713,7 +743,7 @@ function getCredentialById(credentialId) {
   return safeArray(proxyConfig.credentials).find((credential) => credential.id === credentialId) || null;
 }
 
-function getModelProvider(modelId) {
+function _getModelProvider(modelId) {
   const match = safeArray(proxyConfig.models).find((model) => model.id === modelId);
   return match?.provider || 'commandcode';
 }
@@ -737,7 +767,7 @@ function detectClientTool(req) {
 
 
 
-function getEligibleCredentials(provider, modelId) {
+function _getEligibleCredentials(provider, modelId) {
   return safeArray(proxyConfig.credentials)
     .filter((credential) => credential.status === 'active')
     .filter((credential) => credential.provider === provider)
@@ -781,7 +811,7 @@ function sortByPriority(credentials) {
   return credentials;
 }
 
-function getUsageRatio(credential) {
+function _getUsageRatio(credential) {
   const limit = Number(credential.monthlyLimit || 0);
   if (limit <= 0) return 0;
   const used = Number(credential.usage?.requestCount || credential.usage?.totalTokens || 0);
@@ -1663,7 +1693,7 @@ function purgeExpiredOAuthCodes() {
   }
 }
 
-async function handleOAuthApprove(req, res, provider, parsedUrl) {
+async function handleOAuthApprove(req, res, provider, _) {
   const body = await parseFormBody(req);
   const code = body.code;
   const state = body.state;
@@ -1800,7 +1830,7 @@ async function handleOAuthToken(req, res) {
 
 // === OAuth Client Flow — Proxy logs INTO external providers ===
 
-async function handleOAuthClientLogin(req, res, provider, parsedUrl) {
+async function handleOAuthClientLogin(req, res, provider, _) {
   const defaults = getProviderDefaults(provider);
   if (!defaults.authUrl || !defaults.tokenUrl) {
     return sendError(res, 400, `Provider "${provider}" does not support OAuth login. Add authUrl and tokenUrl to provider config.`);
