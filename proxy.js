@@ -161,7 +161,7 @@ const PROVIDER_DEFAULTS = {
   },
 };
 
-let customProviders = {};
+let _customProviders = {}; // reserved for future custom-provider overrides
 
 // Simple in-memory response cache for non-streaming identical requests
 const responseCache = new Map();
@@ -610,7 +610,7 @@ function normalizeCredentialMeta(meta, knownProviders = {}) {
 
 function saveConfig(config) {
   ensureConfigDir();
-  const { apiKeys, ...configWithoutLegacyKeys } = config;
+  const { apiKeys: _legacyApiKeys, ...configWithoutLegacyKeys } = config;
   const knownProviders = { ...PROVIDER_DEFAULTS, ...(config.providers || {}) };
   const safeConfig = {
     ...configWithoutLegacyKeys,
@@ -743,7 +743,7 @@ function getCredentialById(credentialId) {
   return safeArray(proxyConfig.credentials).find((credential) => credential.id === credentialId) || null;
 }
 
-function getModelProvider(modelId) {
+function _getModelProvider(modelId) {
   const match = safeArray(proxyConfig.models).find((model) => model.id === modelId);
   return match?.provider || 'commandcode';
 }
@@ -767,7 +767,7 @@ function detectClientTool(req) {
 
 
 
-function getEligibleCredentials(provider, modelId) {
+function _getEligibleCredentials(provider, modelId) {
   return safeArray(proxyConfig.credentials)
     .filter((credential) => credential.status === 'active')
     .filter((credential) => credential.provider === provider)
@@ -811,7 +811,7 @@ function sortByPriority(credentials) {
   return credentials;
 }
 
-function getUsageRatio(credential) {
+function _getUsageRatio(credential) {
   const limit = Number(credential.monthlyLimit || 0);
   if (limit <= 0) return 0;
   const used = Number(credential.usage?.requestCount || credential.usage?.totalTokens || 0);
@@ -1693,7 +1693,7 @@ function purgeExpiredOAuthCodes() {
   }
 }
 
-async function handleOAuthApprove(req, res, provider, parsedUrl) {
+async function handleOAuthApprove(req, res, provider, _) {
   const body = await parseFormBody(req);
   const code = body.code;
   const state = body.state;
@@ -1830,7 +1830,7 @@ async function handleOAuthToken(req, res) {
 
 // === OAuth Client Flow — Proxy logs INTO external providers ===
 
-async function handleOAuthClientLogin(req, res, provider, parsedUrl) {
+async function handleOAuthClientLogin(req, res, provider, _) {
   const defaults = getProviderDefaults(provider);
   if (!defaults.authUrl || !defaults.tokenUrl) {
     return sendError(res, 400, `Provider "${provider}" does not support OAuth login. Add authUrl and tokenUrl to provider config.`);
