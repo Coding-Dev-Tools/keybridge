@@ -4,7 +4,7 @@
 2026-06-11T03:03:18
 
 ## System health
-- Disk (C:\Users\jomie): 88.5% used (114.1 GB free of 990.7 GB total)
+- Disk (C:\Users\home): 88.5% used (114.1 GB free of 990.7 GB total)
 - Memory: 20.3 GB used / 34.2 GB total (13.96 GB available)
 - Processes: 298 entries reported by tasklist
 
