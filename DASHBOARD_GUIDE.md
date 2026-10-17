@@ -1,5 +1,7 @@
 # Dashboard Guide
 
+This is keybridge, the local Command Code Vault Proxy. The default port is `3000`.
+
 The dashboard is now a **local credential vault UI**, not just a Command Code key table.
 
 Open it at:

@@ -2,10 +2,10 @@
 # Right-click PowerShell -> Run as Administrator, then: .\install-autostart.ps1
 #
 # Set these environment variables before running, or edit the values below:
-#   PROXY_PORT (default: 3456)
+#   PROXY_PORT (default: 3000)
 #   COMMAND_CODE_API_KEY (required)
 
-$port = if ($env:PROXY_PORT) { $env:PROXY_PORT } else { "3456" }
+$port = if ($env:PROXY_PORT) { $env:PROXY_PORT } else { "3000" }
 $repoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $cmdArgs = "/c cd /d `"$repoDir`" && set PROXY_PORT=$port && node proxy.js"
 if ($env:COMMAND_CODE_API_KEY) {

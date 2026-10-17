@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node proxy.js",
     "dev": "node --watch proxy.js",
-    "test": "node test-proxy.js",
+    "test": "node --test tests/smoke.test.js tests/vault-encryption.test.js tests/vault-recovery.test.js && node test-proxy.js",
     "lint": "eslint ."
   },
   "keywords": [

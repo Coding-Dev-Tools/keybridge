@@ -356,7 +356,7 @@ function loadVaultFile() {
       keySalt: crypto.randomBytes(16).toString('base64'),
       entries: {},
     };
-    fs.writeFileSync(VAULT_FILE, stableJson(freshVault));
+    writeFileAtomicSync(VAULT_FILE, stableJson(freshVault));
     return freshVault;
   }
 
@@ -371,24 +371,27 @@ function loadVaultFile() {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backup = `${VAULT_FILE}.corrupt-${stamp}`;
     try {
-      fs.renameSync(VAULT_FILE, backup);
-    } catch (_) {
-      // rename denied (mount quirk): fall back to leaving the original in
-      // place; the fresh vault write below will still surface the problem.
+      // Exclusive creation preserves any earlier recovery archive too. Keep
+      // the original in place until both the backup and replacement are safe.
+      writeFileExclusiveSync(backup, fs.readFileSync(VAULT_FILE));
+    } catch (archiveError) {
+      throw new Error(
+        `[proxy] Refusing to replace ${VAULT_FILE}: cannot preserve recovery backup ` +
+        `(${archiveError.code || archiveError.name}).`
+      );
     }
-    console.error(
-      `[proxy] WARNING: ${VAULT_FILE} is unreadable/corrupt (${err.message}).` +
-      `\n[proxy] Original preserved at ${backup}.` +
-      `\n[proxy] Starting an EMPTY vault — previously stored credentials cannot be decrypted against a new salt and were NOT migrated.` +
-      `\n[proxy] Restore the backup manually to recover entries.`
-    );
-    parsed = null;
-    var recoveredVault = {
+    const recoveredVault = {
       version: 1,
       keySalt: crypto.randomBytes(16).toString('base64'),
       entries: {},
     };
-    fs.writeFileSync(VAULT_FILE, stableJson(recoveredVault));
+    writeFileAtomicSync(VAULT_FILE, stableJson(recoveredVault));
+    console.error(
+      `[proxy] WARNING: ${VAULT_FILE} is unreadable/corrupt (${err.code || err.name}).` +
+      `\n[proxy] Original preserved at ${backup}.` +
+      `\n[proxy] Starting an EMPTY vault — previously stored credentials cannot be decrypted against a new salt and were NOT migrated.` +
+      `\n[proxy] Restore the backup manually to recover entries.`
+    );
     return recoveredVault;
   }
 
@@ -411,8 +414,14 @@ function loadVaultFile() {
 function ensureVaultLocalSecret() {
   ensureConfigDir();
   if (!fs.existsSync(VAULT_KEY_FILE)) {
-    fs.writeFileSync(VAULT_KEY_FILE, crypto.randomBytes(32).toString('base64'));
+    try {
+      writeFileExclusiveSync(VAULT_KEY_FILE, crypto.randomBytes(32).toString('base64'));
+    } catch (err) {
+      // A concurrent startup may have created the same key. Never replace it.
+      if (err.code !== 'EEXIST') throw err;
+    }
   }
+  fs.chmodSync(VAULT_KEY_FILE, 0o600);
   return fs.readFileSync(VAULT_KEY_FILE, 'utf8').trim();
 }
 
@@ -432,10 +441,54 @@ function getVaultKey() {
 // disk can never truncate the vault/config, and failures surface to callers
 // (bubbling up to the request handler's catch -> 500) instead of being lost
 // in an async callback.
+function syncParentDirectorySync(file) {
+  // Node cannot open directory handles for fsync on Windows. Preserve file
+  // flushing there; POSIX callers must also durably publish the new entry.
+  if (process.platform === 'win32') return;
+  const fd = fs.openSync(path.dirname(file), fs.constants.O_RDONLY | fs.constants.O_DIRECTORY);
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function writeFileExclusiveSync(file, data, { syncParent = true } = {}) {
+  let fd;
+  let owned = false;
+  try {
+    fd = fs.openSync(file, 'wx', 0o600);
+    owned = true;
+    fs.writeFileSync(fd, data);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    if (syncParent) syncParentDirectorySync(file);
+  } catch (error) {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch (_) {}
+    }
+    if (owned) {
+      try { fs.unlinkSync(file); } catch (_) {}
+    }
+    throw error;
+  }
+}
+
 function writeFileAtomicSync(file, data) {
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, data, { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  const tmp = `${file}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  let owned = false;
+  try {
+    writeFileExclusiveSync(tmp, data, { syncParent: false });
+    owned = true;
+    fs.renameSync(tmp, file);
+    owned = false;
+    syncParentDirectorySync(file);
+  } finally {
+    if (owned) {
+      try { fs.unlinkSync(tmp); } catch (_) {}
+    }
+  }
 }
 
 function saveVault() {
