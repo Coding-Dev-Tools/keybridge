@@ -441,7 +441,19 @@ function getVaultKey() {
 // disk can never truncate the vault/config, and failures surface to callers
 // (bubbling up to the request handler's catch -> 500) instead of being lost
 // in an async callback.
-function writeFileExclusiveSync(file, data) {
+function syncParentDirectorySync(file) {
+  // Node cannot open directory handles for fsync on Windows. Preserve file
+  // flushing there; POSIX callers must also durably publish the new entry.
+  if (process.platform === 'win32') return;
+  const fd = fs.openSync(path.dirname(file), fs.constants.O_RDONLY | fs.constants.O_DIRECTORY);
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function writeFileExclusiveSync(file, data, { syncParent = true } = {}) {
   let fd;
   let owned = false;
   try {
@@ -451,6 +463,7 @@ function writeFileExclusiveSync(file, data) {
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
+    if (syncParent) syncParentDirectorySync(file);
   } catch (error) {
     if (fd !== undefined) {
       try { fs.closeSync(fd); } catch (_) {}
@@ -466,10 +479,11 @@ function writeFileAtomicSync(file, data) {
   const tmp = `${file}.tmp-${process.pid}-${crypto.randomUUID()}`;
   let owned = false;
   try {
-    writeFileExclusiveSync(tmp, data);
+    writeFileExclusiveSync(tmp, data, { syncParent: false });
     owned = true;
     fs.renameSync(tmp, file);
     owned = false;
+    syncParentDirectorySync(file);
   } finally {
     if (owned) {
       try { fs.unlinkSync(tmp); } catch (_) {}

@@ -7,7 +7,8 @@ const path = require("node:path");
 
 // Boot only against synthetic files, then close the ephemeral local server.
 function startProxyWithVault(vaultContent, { denyArchive = false, denyReplacement = false,
-  previousBackup = null, denyFsync = false, oldTempSymlink = false } = {}) {
+  previousBackup = null, denyFsync = false, oldTempSymlink = false,
+  recordDurability = false, directorySyncFailureAt = 0 } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "keybridge-vault-test-"));
   const configDir = path.join(tmp, ".config");
   fs.mkdirSync(configDir, { recursive: true });
@@ -21,6 +22,30 @@ function startProxyWithVault(vaultContent, { denyArchive = false, denyReplacemen
     ["-e", `
       const fs = require("node:fs");
       const vaultFile = ${JSON.stringify(path.join(configDir, "vault.json"))};
+      if (${recordDurability || directorySyncFailureAt > 0}) {
+        const events = [];
+        let directorySyncs = 0;
+        const record = (event) => {
+          events.push(event);
+          fs.writeFileSync(${JSON.stringify(path.join(tmp, "durability.json"))}, JSON.stringify(events));
+        };
+        const originalFsync = fs.fsyncSync;
+        fs.fsyncSync = (fd) => {
+          const directory = fs.fstatSync(fd).isDirectory();
+          if (directory) directorySyncs++;
+          if (directory && directorySyncs === ${directorySyncFailureAt}) {
+            record("directory-sync-failed");
+            throw Object.assign(new Error("test directory flush denied"), { code: "EIO" });
+          }
+          originalFsync(fd);
+          record(directory ? "directory-synced" : "file-synced");
+        };
+        const originalRename = fs.renameSync;
+        fs.renameSync = (source, destination) => {
+          originalRename(source, destination);
+          if (destination === vaultFile) record("vault-replaced");
+        };
+      }
       if (${denyFsync}) {
         fs.fsyncSync = () => { throw Object.assign(new Error("test flush denied"), { code: "ENOSPC" }); };
       }
@@ -206,4 +231,56 @@ test("a preexisting predictable temporary symlink cannot overwrite an external f
 
 test("proxy entry still parses (guard against regressions)", () => {
   execFileSync("node", ["--check", path.join(__dirname, "..", "proxy.js")], { stdio: "ignore" });
+});
+
+const directorySyncOnly = {
+  skip: process.platform === "win32" ? "Node directory handles do not support fsync on Windows" : false,
+};
+
+test("recovery persists the archive entry before replacing and persisting the vault entry", directorySyncOnly, () => {
+  const corrupt = '{"entries":{"test_fixture":INVALID';
+  const { tmp, configDir, child } = startProxyWithVault(corrupt, { recordDurability: true });
+  try {
+    assert.strictEqual(child.status, 0, child.stderr);
+    const events = JSON.parse(fs.readFileSync(path.join(tmp, "durability.json"), "utf8"));
+    assert.deepStrictEqual(events.slice(0, 5), [
+      "file-synced", "directory-synced", "file-synced", "vault-replaced", "directory-synced",
+    ]);
+    const backup = fs.readdirSync(configDir).find((name) => name.startsWith("vault.json.corrupt-"));
+    assert.strictEqual(fs.readFileSync(path.join(configDir, backup), "utf8"), corrupt);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("failed archive-directory sync refuses replacement and retains the original", directorySyncOnly, () => {
+  const corrupt = '{"entries":{"test_fixture":INVALID';
+  const { tmp, configDir, child } = startProxyWithVault(corrupt, { directorySyncFailureAt: 1 });
+  try {
+    assert.notStrictEqual(child.status, 0, "unflushed backup must not permit recovery");
+    assert.strictEqual(fs.readFileSync(path.join(configDir, "vault.json"), "utf8"), corrupt);
+    const events = JSON.parse(fs.readFileSync(path.join(tmp, "durability.json"), "utf8"));
+    assert.ok(!events.includes("vault-replaced"));
+    assert.doesNotMatch(child.stderr, /Original preserved at|Starting an EMPTY vault/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("failed replacement-directory sync reports failure with the durable archive intact", directorySyncOnly, () => {
+  const corrupt = '{"entries":{"test_fixture":INVALID';
+  const { tmp, configDir, child } = startProxyWithVault(corrupt, { directorySyncFailureAt: 2 });
+  try {
+    assert.notStrictEqual(child.status, 0, "unflushed replacement must not report success");
+    const backup = fs.readdirSync(configDir).find((name) => name.startsWith("vault.json.corrupt-"));
+    assert.strictEqual(fs.readFileSync(path.join(configDir, backup), "utf8"), corrupt);
+    assert.deepStrictEqual(fs.readdirSync(configDir).filter((name) => name.includes(".tmp-")), []);
+    const events = JSON.parse(fs.readFileSync(path.join(tmp, "durability.json"), "utf8"));
+    assert.deepStrictEqual(events.slice(0, 5), [
+      "file-synced", "directory-synced", "file-synced", "vault-replaced", "directory-sync-failed",
+    ]);
+    assert.doesNotMatch(child.stderr, /Starting an EMPTY vault/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
