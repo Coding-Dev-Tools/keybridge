@@ -1,12 +1,14 @@
 # Universal API Key Router — Configuration Guide
 
+This is keybridge, the local Command Code Vault Proxy. The default port is `3000`.
+
 ## ONE KEY TO RULE THEM ALL
 
 All your tools connect to this proxy using a **single API key**. The proxy handles provider selection, key rotation, and failover automatically.
 
 ### Proxy Endpoint
 ```
-Base URL: http://localhost:3456/v1
+Base URL: http://localhost:3000/v1
 API Key:  (set via PROXY_API_KEY environment variable)
 ```
 
@@ -14,7 +16,7 @@ API Key:  (set via PROXY_API_KEY environment variable)
 
 ## How Routing Works (Optimal for ALL Agents)
 
-1. **Request arrives** at `http://localhost:3456/v1/chat/completions` with your proxy key
+1. **Request arrives** at `http://localhost:3000/v1/chat/completions` with your proxy key
 2. **Priority-ordered credentials** tried in sequence — highest priority first
 3. **If #1 fails** (rate limit, error, model not supported) → **automatic fallback to #2, then #3**
 4. **Usage tracked** per credential (request count, tokens, last used)
@@ -76,19 +78,19 @@ Add more models via the dashboard.
 
 ### OpenClaw
 ```bash
-set OPENAI_BASE_URL=http://localhost:3456/v1
+set OPENAI_BASE_URL=http://localhost:3000/v1
 set OPENAI_API_KEY=your_proxy_api_key
 ```
 
 ### Hermes / Command Code CLI
 ```bash
-set COMMAND_CODE_API_URL=http://localhost:3456
+set COMMAND_CODE_API_URL=http://localhost:3000
 set COMMAND_CODE_API_KEY=your_proxy_api_key
 ```
 
 ### Cursor IDE
 Settings → AI → OpenAI API:
-- Base URL: `http://localhost:3456/v1`
+- Base URL: `http://localhost:3000/v1`
 - API Key: `your_proxy_api_key`
 - Model: `deepseek/deepseek-v4-pro`
 
@@ -99,7 +101,7 @@ Settings → AI → OpenAI API:
     "title": "Proxy Router",
     "provider": "openai",
     "model": "deepseek/deepseek-v4-pro",
-    "apiBase": "http://localhost:3456/v1",
+    "apiBase": "http://localhost:3000/v1",
     "apiKey": "your_proxy_api_key"
   }]
 }
@@ -107,13 +109,13 @@ Settings → AI → OpenAI API:
 
 ### Claude Desktop (Anthropic)
 ```bash
-set ANTHROPIC_BASE_URL=http://localhost:3456/v1
+set ANTHROPIC_BASE_URL=http://localhost:3000/v1
 set ANTHROPIC_API_KEY=your_proxy_api_key
 ```
 
 ### Any OpenAI-compatible tool
 ```
-Base URL: http://localhost:3456/v1
+Base URL: http://localhost:3000/v1
 API Key:  your_proxy_api_key
 ```
 
@@ -121,7 +123,7 @@ API Key:  your_proxy_api_key
 
 ## Dashboard
 
-Open `http://localhost:3456/dashboard` to:
+Open `http://localhost:3000/dashboard` to:
 - Add/remove provider API keys
 - Bind credentials to specific models and tools
 - Set priority ordering for credential fallback
@@ -172,8 +174,8 @@ Open `http://localhost:3456/dashboard` to:
 When building ChatGPT plugins/actions:
 
 1. **Set OAuth URLs in your app manifest:**
-   - Authorization URL: `http://localhost:3456/oauth/authorize/chatgpt`
-   - Token URL: `http://localhost:3456/oauth/token`
+   - Authorization URL: `http://localhost:3000/oauth/authorize/chatgpt`
+   - Token URL: `http://localhost:3000/oauth/token`
 
 2. **User connects** → approval page → auto-creates credential in vault
 

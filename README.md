@@ -1,5 +1,7 @@
 # Command Code Vault Proxy
 
+This is keybridge, the local Command Code Vault Proxy. The default port is `3000`.
+
 Local-first credential vault and OpenAI-compatible proxy for Command Code and other AI providers.
 
 ## What It Is

@@ -24,7 +24,7 @@ OpenRouter, Anthropic, etc.) with automatic rotation and failover.
 ## Testing
 
 ```bash
-npm test          # runs: node test-proxy.js
+npm test          # runs recovery/crypto/unit tests, then node test-proxy.js
 npm run lint      # eslint
 ```
 
@@ -34,4 +34,4 @@ npm run lint      # eslint
 - [ ] `.config/` is gitignored and not present
 - [ ] No real API keys in `test-proxy.js` — use `test_*` prefixed placeholders
 - [ ] README, SETUP, CONFIG, DASHBOARD_GUIDE, AGENTS all reference the same
-      proxy name (`keybridge`) and port (default `3467`)
+      proxy name (`keybridge`) and port (default `3000`)

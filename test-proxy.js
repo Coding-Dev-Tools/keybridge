@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const repoDir = __dirname;
-const port = 3467;
+let port = 0;
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commandcode-vault-test-'));
 const configDir = path.join(tempDir, '.config');
 fs.mkdirSync(configDir, { recursive: true });
@@ -16,7 +16,7 @@ const legacyConfig = {
   apiKeys: [
     {
       name: 'Legacy Command Code',
-      value: 'user_legacy_secret_1234567890',
+      value: 'test_legacy_secret_1234567890',
       provider: 'commandcode',
       status: 'active',
       authType: 'bearer',
@@ -67,6 +67,8 @@ async function run() {
   const { server } = require(path.join(repoDir, 'proxy.js'));
 
   try {
+    await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+    port = server.address().port;
     await waitForHealth();
 
     const health = await request('/health');
@@ -81,7 +83,7 @@ async function run() {
     assert.equal(credentials.response.status, 200);
     assert.equal(credentials.data.credentials.length, 1);
     assert.equal(credentials.data.credentials[0].name, 'Legacy Command Code');
-    assert.notEqual(credentials.data.credentials[0].maskedValue, 'user_legacy_secret_1234567890');
+    assert.notEqual(credentials.data.credentials[0].maskedValue, 'test_legacy_secret_1234567890');
     assert.equal(credentials.data.credentials[0].hasSecret, true);
 
     const rawConfig = JSON.parse(fs.readFileSync(path.join(configDir, 'config.json'), 'utf8'));
@@ -90,7 +92,7 @@ async function run() {
     assert.ok(!('value' in rawConfig.credentials[0]), 'Secret value should not remain in config.json');
 
     const vaultContents = fs.readFileSync(path.join(configDir, 'vault.json'), 'utf8');
-    assert.ok(!vaultContents.includes('user_legacy_secret_1234567890'), 'Vault file should not contain the raw secret');
+    assert.ok(!vaultContents.includes('test_legacy_secret_1234567890'), 'Vault file should not contain the raw secret');
 
     const create = await request('/api/credentials', {
       method: 'POST',
@@ -101,14 +103,14 @@ async function run() {
         credentialType: 'bearer_token',
         authType: 'bearer',
         baseUrl: 'https://api.openai.com/v1',
-        secretValue: 'sk-test-openai-1234567890',
+        secretValue: 'test_openai_secret_1234567890',
         status: 'active',
         models: ['gpt-4o-mini'],
       }),
     });
     assert.equal(create.response.status, 200);
     assert.equal(create.data.credential.provider, 'openai');
-    assert.notEqual(create.data.credential.maskedValue, 'sk-test-openai-1234567890');
+    assert.notEqual(create.data.credential.maskedValue, 'test_openai_secret_1234567890');
 
     const listAfterCreate = await request('/api/credentials');
     const created = listAfterCreate.data.credentials.find((credential) => credential.name === 'OpenAI Bearer');
@@ -120,7 +122,7 @@ async function run() {
       body: JSON.stringify({ id: created.id }),
     });
     assert.equal(reveal.response.status, 200);
-    assert.equal(reveal.data.secretValue, 'sk-test-openai-1234567890');
+    assert.equal(reveal.data.secretValue, 'test_openai_secret_1234567890');
 
     const modelList = await request('/v1/models');
     assert.equal(modelList.response.status, 200);
@@ -130,6 +132,7 @@ async function run() {
     console.log('Smoke test passed.');
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
 

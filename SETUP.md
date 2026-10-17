@@ -1,10 +1,12 @@
 # Universal API Key Router — Setup Guide for All Agents
 
+This is keybridge, the local Command Code Vault Proxy. The default port is `3000`.
+
 ## Your Local Network
 
 ```
-Proxy URL:  http://localhost:3456/v1
-Dashboard:  http://localhost:3456/dashboard
+Proxy URL:  http://localhost:3000/v1
+Dashboard:  http://localhost:3000/dashboard
 API Key:    (set via PROXY_API_KEY environment variable)
 ```
 
@@ -17,13 +19,13 @@ Replace `localhost` with your machine's LAN IP if connecting from other devices 
 OpenClaw uses OpenAI-compatible endpoints. Set these environment variables before starting OpenClaw:
 
 ```bash
-set OPENAI_BASE_URL=http://localhost:3456/v1
+set OPENAI_BASE_URL=http://localhost:3000/v1
 set OPENAI_API_KEY=your_proxy_api_key
 ```
 
 Or in PowerShell:
 ```powershell
-$env:OPENAI_BASE_URL="http://localhost:3456/v1"
+$env:OPENAI_BASE_URL="http://localhost:3000/v1"
 $env:OPENAI_API_KEY="your_proxy_api_key"
 ```
 
@@ -34,7 +36,7 @@ $env:OPENAI_API_KEY="your_proxy_api_key"
 Hermes connects to Command Code's native API. Set these to route through the proxy:
 
 ```bash
-set COMMAND_CODE_API_URL=http://localhost:3456
+set COMMAND_CODE_API_URL=http://localhost:3000
 set COMMAND_CODE_API_KEY=your_proxy_api_key
 ```
 
@@ -45,7 +47,7 @@ set COMMAND_CODE_API_KEY=your_proxy_api_key
 Opencode agents use OpenAI-compatible format. Configure:
 
 ```bash
-set OPENAI_BASE_URL=http://localhost:3456/v1
+set OPENAI_BASE_URL=http://localhost:3000/v1
 set OPENAI_API_KEY=your_proxy_api_key
 ```
 
@@ -56,7 +58,7 @@ set OPENAI_API_KEY=your_proxy_api_key
 1. Open Cursor Settings (Ctrl+,)
 2. Go to **AI** → **OpenAI API**
 3. Set:
-   - **Base URL**: `http://localhost:3456/v1`
+   - **Base URL**: `http://localhost:3000/v1`
    - **API Key**: `your_proxy_api_key`
    - **Model**: `deepseek/deepseek-v4-pro` (or any from the list below)
 
@@ -72,7 +74,7 @@ Add to `.vscode/settings.json` or Continue config:
     "title": "Proxy Router",
     "provider": "openai",
     "model": "deepseek/deepseek-v4-pro",
-    "apiBase": "http://localhost:3456/v1",
+    "apiBase": "http://localhost:3000/v1",
     "apiKey": "your_proxy_api_key"
   }]
 }
@@ -83,7 +85,7 @@ Add to `.vscode/settings.json` or Continue config:
 ## Claude Desktop (Anthropic)
 
 ```bash
-set ANTHROPIC_BASE_URL=http://localhost:3456/v1
+set ANTHROPIC_BASE_URL=http://localhost:3000/v1
 set ANTHROPIC_API_KEY=your_proxy_api_key
 ```
 
@@ -94,7 +96,7 @@ set ANTHROPIC_API_KEY=your_proxy_api_key
 All tools that support OpenAI API format work instantly:
 
 ```
-Base URL: http://localhost:3456/v1
+Base URL: http://localhost:3000/v1
 API Key:  your_proxy_api_key
 ```
 
@@ -163,4 +165,4 @@ cd command-code-lol
 start-proxy.cmd
 ```
 
-Dashboard: `http://localhost:3456/dashboard`
+Dashboard: `http://localhost:3000/dashboard`
