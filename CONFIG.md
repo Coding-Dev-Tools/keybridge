@@ -148,7 +148,7 @@ Open `http://localhost:3000/dashboard` to:
 |----------|---------|---------|
 | `PROXY_API_KEY` | Single key for all proxy access | (none — no auth required) |
 | `PROXY_PORT` | Proxy listening port | `3000` |
-| `PROXY_BIND_HOST` | Network interface | `0.0.0.0` |
+| `PROXY_BIND_HOST` | Network interface | `127.0.0.1` |
 | `COMMAND_CODE_API_KEY` | Fallback Command Code key | (none) |
 | `COMMANDCODE_PROXY_MASTER_KEY` | Extra secret mixed into vault encryption | (none) |
 | `PROXY_CONFIG_DIR` | Config/vault directory | `./.config` |
