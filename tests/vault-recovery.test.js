@@ -7,7 +7,7 @@ const path = require("node:path");
 
 // Boot only against synthetic files, then close the ephemeral local server.
 function startProxyWithVault(vaultContent, { denyArchive = false, denyReplacement = false,
-  previousBackup = null } = {}) {
+  previousBackup = null, denyFsync = false, oldTempSymlink = false } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "keybridge-vault-test-"));
   const configDir = path.join(tmp, ".config");
   fs.mkdirSync(configDir, { recursive: true });
@@ -21,10 +21,26 @@ function startProxyWithVault(vaultContent, { denyArchive = false, denyReplacemen
     ["-e", `
       const fs = require("node:fs");
       const vaultFile = ${JSON.stringify(path.join(configDir, "vault.json"))};
+      if (${denyFsync}) {
+        fs.fsyncSync = () => { throw Object.assign(new Error("test flush denied"), { code: "ENOSPC" }); };
+      }
+      if (${oldTempSymlink}) {
+        Date.now = () => 0;
+        const external = ${JSON.stringify(path.join(tmp, "external-fixture"))};
+        fs.writeFileSync(external, "test_external_data");
+        fs.symlinkSync(external, vaultFile + ".tmp-" + process.pid + "-0");
+      }
       if (${previousBackup !== null}) {
         Date.prototype.toISOString = () => "2026-10-16T00:00:00.000Z";
       }
       if (${denyArchive}) {
+        const originalOpen = fs.openSync;
+        fs.openSync = (file, ...args) => {
+          if (String(file).startsWith(vaultFile + ".corrupt-")) {
+            throw Object.assign(new Error("test archive denied"), { code: "EACCES" });
+          }
+          return originalOpen(file, ...args);
+        };
         for (const name of ["renameSync", "copyFileSync"]) {
           const original = fs[name];
           fs[name] = (source, ...args) => {
@@ -125,6 +141,8 @@ test("a failed replacement preserves both the original and its recovery backup",
     const backup = fs.readdirSync(configDir).find((name) => name.startsWith("vault.json.corrupt-"));
     assert.ok(backup);
     assert.strictEqual(fs.readFileSync(path.join(configDir, backup), "utf8"), corrupt);
+    assert.deepStrictEqual(fs.readdirSync(configDir).filter((name) => name.includes(".tmp-")), []);
+    assert.doesNotMatch(child.stderr, /Starting an EMPTY vault/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -151,6 +169,36 @@ test("recovery diagnostics do not print corrupt vault contents", () => {
     assert.strictEqual(child.status, 0, child.stderr);
     assert.match(child.stderr, /unreadable\/corrupt/);
     assert.ok(!child.stderr.includes(secret), "parser errors must not disclose vault bytes");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("failed backup flush preserves the original and removes partial owned files", () => {
+  const corrupt = '{"entries":{"test_fixture":INVALID';
+  const { tmp, configDir, child } = startProxyWithVault(corrupt, { denyFsync: true });
+  try {
+    assert.notStrictEqual(child.status, 0);
+    assert.strictEqual(fs.readFileSync(path.join(configDir, "vault.json"), "utf8"), corrupt);
+    assert.deepStrictEqual(fs.readdirSync(configDir), ["vault.json"]);
+    assert.doesNotMatch(child.stderr, /Starting an EMPTY vault/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("a preexisting predictable temporary symlink cannot overwrite an external file", {
+  skip: process.platform === "win32" ? "Windows symlink creation may require administrator rights" : false,
+}, () => {
+  const corrupt = '{"entries":{"test_fixture":INVALID';
+  const { tmp, configDir, child } = startProxyWithVault(corrupt, { oldTempSymlink: true });
+  try {
+    assert.strictEqual(child.status, 0, child.stderr);
+    assert.strictEqual(fs.readFileSync(path.join(tmp, "external-fixture"), "utf8"), "test_external_data");
+    assert.strictEqual(fs.lstatSync(path.join(configDir, "vault.json")).isSymbolicLink(), false);
+    const foreign = fs.readdirSync(configDir).find((name) => name.includes(".tmp-"));
+    assert.ok(foreign, "the writer must not delete a temporary file it did not create");
+    assert.strictEqual(fs.lstatSync(path.join(configDir, foreign)).isSymbolicLink(), true);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
